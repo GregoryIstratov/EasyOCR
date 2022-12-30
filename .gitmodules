@@ -1,0 +1,3 @@
+[submodule "TextRecognitionDataGenerator"]
+	path = trainer/TextRecognitionDataGenerator
+	url = https://github.com/GregoryIstratov/TextRecognitionDataGenerator.git
