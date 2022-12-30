@@ -9,7 +9,7 @@ import pandas  as pd
 from natsort import natsorted
 from PIL import Image
 import numpy as np
-from torch.utils.data import Dataset, ConcatDataset, Subset
+from torch.utils.data import Dataset, IterableDataset, ConcatDataset, Subset
 from torch._utils import _accumulate
 import torchvision.transforms as transforms
 from TextRecognitionDataGenerator.generate import Generator as TextGen
@@ -128,7 +128,7 @@ class Generated_Dataset(object):
                 _dataset, batch_size=opt.batch_size,
                 shuffle=False,
                 num_workers=int(opt.workers), #prefetch_factor=2,# persistent_workers=True,
-                collate_fn=_AlignCollate)
+                collate_fn=_AlignCollate, pin_memory=True)
 
         self.data_loader_iter = iter(self._data_loader)
 
@@ -172,28 +172,16 @@ def hierarchical_dataset(root, opt, select_data='/'):
 
     return concatenated_dataset, dataset_log
 
-class GenDataset(Dataset):
+class GenDataset(IterableDataset):
 
     def __init__(self, opt):
+        super(GenDataset).__init__()
+        
         self.opt = opt
-        self.gen = TextGen()
-        self.nSamples = 10000
+        self.gen = TextGen(height=opt.imgH, rgb=opt.rgb, sensitive=opt.sensitive)
 
-    def __len__(self):
-        return self.nSamples
-
-    def __getitem__(self, index):
-        img, label = next(self.gen)
-
-        if not self.opt.rgb:
-            img = img.convert('L')
-        else:
-            img = img.convert('RGB')
-
-        if not self.opt.sensitive:
-            label = label.upper()
-            
-        return (img, label)
+    def __iter__(self):
+        return self.gen
 
 class OCRDataset(Dataset):
 

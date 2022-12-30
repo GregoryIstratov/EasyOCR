@@ -8,7 +8,7 @@ train_data: 'all_data'
 #valid_data: 'valid_data/ocr_doc_dataset_no_sts'
 valid_data: 'valid_data/ocr_doc_dataset_test'
 manualSeed: 1111
-workers: 4
+workers: 12
 batch_size: 32 #32
 num_iter: 5000
 valInterval: 1000
@@ -21,13 +21,13 @@ rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-select_data: 'text_dataset_100k_new' # this is dataset folder in train_data
-#select_data: False # this is dataset folder in train_data
+#select_data: 'text_dataset_100k_new' # this is dataset folder in train_data
+select_data: False # this is dataset folder in train_data
 batch_ratio: '1' 
 total_data_usage_ratio: 1.0
 batch_max_length: 64
-imgH: 128
-imgW: 1200
+imgH: 64
+imgW: 640
 rgb: False
 contrast_adjust: False
 sensitive: False
