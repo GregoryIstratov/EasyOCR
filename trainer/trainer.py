@@ -1,6 +1,10 @@
 import os
 import torch.backends.cudnn as cudnn
 import yaml
+
+import sys
+sys.path.insert(0, "TextRecognitionDataGenerator/")
+
 from train import train
 from utils import AttrDict
 import pandas as pd
