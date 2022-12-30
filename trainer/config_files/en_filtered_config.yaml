@@ -1,35 +1,39 @@
 number: '0123456789'
-symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €"
-lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-experiment_name: 'en_filtered'
+symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
+#symbol: ",-. "
+lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
+#lang_char: 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
+experiment_name: 'ru_filtered'
 train_data: 'all_data'
-valid_data: 'all_data/en_val'
+#valid_data: 'valid_data/ocr_doc_dataset_no_sts'
+valid_data: 'valid_data/ocr_doc_dataset_test'
 manualSeed: 1111
-workers: 6
+workers: 4
 batch_size: 32 #32
-num_iter: 300000
-valInterval: 20000
+num_iter: 5000
+valInterval: 1000
 saved_model: '' #'saved_models/en_filtered/iter_300000.pth'
 FT: False
 optim: False # default is Adadelta
-lr: 1.
+lr: 1
 beta1: 0.9
-rho: 0.95
+rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-select_data: 'en_train_filtered' # this is dataset folder in train_data
+select_data: 'text_dataset_100k_new' # this is dataset folder in train_data
+#select_data: False # this is dataset folder in train_data
 batch_ratio: '1' 
 total_data_usage_ratio: 1.0
-batch_max_length: 34 
-imgH: 64
-imgW: 600
+batch_max_length: 64
+imgH: 128
+imgW: 1200
 rgb: False
 contrast_adjust: False
-sensitive: True
+sensitive: False
 PAD: True
 contrast_adjust: 0.0
-data_filtering_off: False
+data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
 FeatureExtraction: 'VGG'
@@ -37,9 +41,9 @@ SequenceModeling: 'BiLSTM'
 Prediction: 'CTC'
 num_fiducial: 20
 input_channel: 1
-output_channel: 256
-hidden_size: 256
+output_channel: 512
+hidden_size: 512
 decode: 'greedy'
-new_prediction: False
+new_prediction: True
 freeze_FeatureFxtraction: False
 freeze_SequenceModeling: False

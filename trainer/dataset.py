@@ -12,6 +12,7 @@ import numpy as np
 from torch.utils.data import Dataset, ConcatDataset, Subset
 from torch._utils import _accumulate
 import torchvision.transforms as transforms
+from TextRecognitionDataGenerator.generate import Generator as TextGen
 
 def contrast_grey(img):
     high = np.percentile(img, 90)
@@ -98,17 +99,49 @@ class Batch_Balanced_Dataset(object):
 
         for i, data_loader_iter in enumerate(self.dataloader_iter_list):
             try:
-                image, text = data_loader_iter.next()
+                image, text = next(data_loader_iter)
                 balanced_batch_images.append(image)
                 balanced_batch_texts += text
             except StopIteration:
                 self.dataloader_iter_list[i] = iter(self.data_loader_list[i])
-                image, text = self.dataloader_iter_list[i].next()
+                image, text = next(self.dataloader_iter_list[i])
                 balanced_batch_images.append(image)
                 balanced_batch_texts += text
             except ValueError:
                 pass
 
+        balanced_batch_images = torch.cat(balanced_batch_images, 0)
+
+        return balanced_batch_images, balanced_batch_texts
+    
+class Generated_Dataset(object):
+
+    def __init__(self, opt):
+
+        _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust = opt.contrast_adjust)
+        self.data_loader_list = []
+        self.dataloader_iter_list = []
+
+        _dataset = GenDataset(opt)
+
+        self._data_loader = torch.utils.data.DataLoader(
+                _dataset, batch_size=opt.batch_size,
+                shuffle=False,
+                num_workers=int(opt.workers), #prefetch_factor=2,# persistent_workers=True,
+                collate_fn=_AlignCollate)
+
+        self.data_loader_iter = iter(self._data_loader)
+
+
+    def get_batch(self):
+        balanced_batch_images = []
+        balanced_batch_texts = []
+
+
+        image, text = next(self.data_loader_iter)
+        balanced_batch_images.append(image)
+        balanced_batch_texts += text
+        
         balanced_batch_images = torch.cat(balanced_batch_images, 0)
 
         return balanced_batch_images, balanced_batch_texts
@@ -139,6 +172,29 @@ def hierarchical_dataset(root, opt, select_data='/'):
 
     return concatenated_dataset, dataset_log
 
+class GenDataset(Dataset):
+
+    def __init__(self, opt):
+        self.opt = opt
+        self.gen = TextGen()
+        self.nSamples = 10000
+
+    def __len__(self):
+        return self.nSamples
+
+    def __getitem__(self, index):
+        img, label = next(self.gen)
+
+        if not self.opt.rgb:
+            img = img.convert('L')
+        else:
+            img = img.convert('RGB')
+
+        if not self.opt.sensitive:
+            label = label.upper()
+            
+        return (img, label)
+
 class OCRDataset(Dataset):
 
     def __init__(self, root, opt):
@@ -150,7 +206,7 @@ class OCRDataset(Dataset):
         self.nSamples = len(self.df)
 
         if self.opt.data_filtering_off:
-            self.filtered_index_list = [index + 1 for index in range(self.nSamples)]
+            self.filtered_index_list = [index for index in range(self.nSamples)]
         else:
             self.filtered_index_list = []
             for index in range(self.nSamples):
@@ -181,7 +237,7 @@ class OCRDataset(Dataset):
             img = Image.open(img_fpath).convert('L')
 
         if not self.opt.sensitive:
-            label = label.lower()
+            label = label.upper()
 
         # We only train and evaluate on alphanumerics (or pre-defined character set in train.py)
         out_of_char = f'[^{self.opt.character}]'
