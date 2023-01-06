@@ -154,11 +154,16 @@ def train(opt, show_number = 5, amp=False):
     # [print(name, p.numel()) for name, p in filter(lambda p: p[1].requires_grad, model.named_parameters())]
 
     # setup optimizer
-    if opt.optim=='adam':
-        #optimizer = optim.Adam(filtered_parameters, lr=opt.lr, betas=(opt.beta1, 0.999))
-        optimizer = optim.Adam(filtered_parameters)
-    else:
-        optimizer = optim.Adadelta(filtered_parameters, lr=opt.lr, rho=opt.rho, eps=opt.eps)
+    match opt.optim:
+        case 'adamw':
+            lr = 1e-3 * opt.lr
+            optimizer = optim.AdamW(filtered_parameters, lr=lr)
+        case 'adam':
+            #optimizer = optim.Adam(filtered_parameters, lr=opt.lr, betas=(opt.beta1, 0.999))
+            lr = 1e-3 * opt.lr
+            optimizer = optim.Adam(filtered_parameters, lr=lr)
+        case 'adadelta':
+            optimizer = optim.Adadelta(filtered_parameters, lr=opt.lr, rho=opt.rho, eps=opt.eps, weight_decay=0.00001)
     print("Optimizer:")
     print(optimizer)
 
@@ -191,7 +196,7 @@ def train(opt, show_number = 5, amp=False):
     t1= time.time()
         
     valid_enabled = opt.saved_model != ''
-    
+    tm_it_st = time.time()
     while(True):
         # train part
         optimizer.zero_grad(set_to_none=True)
@@ -242,7 +247,10 @@ def train(opt, show_number = 5, amp=False):
             loss_avg.add(cost)
         
         if i % 100 == 0:
-            print(f"[{i}/{opt.num_iter}] Loss: {loss_avg.val()}")        
+            tm_end = time.time()
+            elapsed = tm_end - tm_it_st
+            tm_it_st = time.time()
+            print(f"[{i}/{opt.num_iter}] Loss: {loss_avg.val()} time: {elapsed:0.5f} sec")
 
         # validation part
         if (i % opt.valInterval == 0 and valid_enabled):
@@ -297,10 +305,11 @@ def train(opt, show_number = 5, amp=False):
                 log.write(predicted_result_log + '\n')
                 print('validation time: ', time.time()-t1)
                 t1=time.time()
+                tm_it_st = time.time()
                 
         valid_enabled = True
         # save model per 1e+4 iter.
-        if (i + 1) % 1e+4 == 0:
+        if (i + 1) % 5000 == 0:
             torch.save(
                 model.state_dict(), f'./saved_models/{opt.experiment_name}/iter_{i+1}.pth')
 

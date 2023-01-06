@@ -300,7 +300,7 @@ class AlignCollate(object):
                 else:
                     resized_w = math.ceil(self.imgH * ratio)
 
-                resized_image = image.resize((resized_w, self.imgH), Image.BICUBIC)
+                resized_image = image.resize((resized_w, self.imgH), Image.LINEAR)
                 resized_images.append(transform(resized_image))
                 # resized_image.save('./image_test/%d_test.jpg' % w)
 

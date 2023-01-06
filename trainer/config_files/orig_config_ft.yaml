@@ -5,31 +5,32 @@ experiment_name: 'ru_orig_ft'
 train_data: 'all_data'
 valid_data: 'valid_data/ocr_doc_dataset_test'
 manualSeed: 1111
-workers: 6
+workers: 12
 batch_size: 32 #32
-num_iter: 10000
-valInterval: 1000
-saved_model: 'saved_models/cyrillic_g2.pth' #'saved_models/en_filtered/iter_300000.pth'
+num_iter: 500000
+valInterval: 5000
+saved_model: 'saved_models/1101101.pth' #'saved_models/en_filtered/iter_300000.pth'
 FT: True
-optim: False # default is Adadelta
-lr: 0.1
+optim: 'adamw' # default is Adadelta
+lr: 0.3
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-select_data: 'text_dataset_ru_gray_10k3' # this is dataset folder in train_data
+#select_data: 'text_dataset_ru_gray_10k3' # this is dataset folder in train_data
+select_data: False # this is dataset folder in train_data
 batch_ratio: '1' 
 total_data_usage_ratio: 1.0
 batch_max_length: 60
 imgH: 64
-imgW: 600
+imgW: 1200
 rgb: False
 contrast_adjust: False
 sensitive: False
 PAD: True
 contrast_adjust: 0.0
-data_filtering_off: False
+data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
 FeatureExtraction: 'VGG'

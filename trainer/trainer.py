@@ -30,6 +30,7 @@ def get_config(file_path):
     os.makedirs(f'./saved_models/{opt.experiment_name}', exist_ok=True)
     return opt
 
-opt = get_config("config_files/en_filtered_config.yaml")
-#opt = get_config("config_files/orig_config.yaml")
-train(opt, amp=False)
+#opt = get_config("config_files/en_filtered_config.yaml")
+#opt = get_config("config_files/en_filtered_config_ft.yaml")
+opt = get_config("config_files/orig_config_ft.yaml")
+train(opt, amp=True)
