@@ -14,7 +14,7 @@ import numpy as np
 from utils import CTCLabelConverter, AttnLabelConverter, Averager
 from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset, Generated_Dataset
 from model import Model
-from test import validation
+from test import validation, validation2
 from modules.prediction import Attention
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -48,16 +48,22 @@ def train(opt, show_number = 5, amp=False):
 
     log = open(f'./saved_models/{opt.experiment_name}/log_dataset.txt', 'a', encoding="utf8")
     AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust=opt.contrast_adjust)
-    valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
-    valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=min(32, opt.batch_size),
-        shuffle=True,  # 'True' to check training progress with validation function.
-        num_workers=4, prefetch_factor=512,
-        collate_fn=AlignCollate_valid, pin_memory=True)
-    log.write(valid_dataset_log)
-    print('-' * 80)
-    log.write('-' * 80 + '\n')
-    log.close()
+    
+    if not opt.valid_data:
+        #valid_dataset = Generated_Dataset(opt, ranged=True, count=10000)
+        valid_dataset = Generated_Dataset(opt)
+        valid_loader = valid_dataset.get_dataloader()
+    else:            
+        valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
+        valid_loader = torch.utils.data.DataLoader(
+            valid_dataset, batch_size=min(32, opt.batch_size),
+            shuffle=True,  # 'True' to check training progress with validation function.
+            num_workers=4, prefetch_factor=512,
+            collate_fn=AlignCollate_valid, pin_memory=True)
+        log.write(valid_dataset_log)        
+        print('-' * 80)
+        log.write('-' * 80 + '\n')
+        log.close()
     
     """ model configuration """
     if 'CTC' in opt.Prediction:
@@ -261,8 +267,10 @@ def train(opt, show_number = 5, amp=False):
             with open(f'./saved_models/{opt.experiment_name}/log_train.txt', 'a', encoding="utf8") as log:
                 model.eval()
                 with torch.no_grad():
+                    # valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
+                    # infer_time, length_of_data = validation(model, criterion, valid_loader, converter, opt, device)
                     valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
-                    infer_time, length_of_data = validation(model, criterion, valid_loader, converter, opt, device)
+                    infer_time, length_of_data = validation2(model, criterion, valid_dataset, converter, opt, device, 25)
                 model.train()
 
                 # training loss and validation loss

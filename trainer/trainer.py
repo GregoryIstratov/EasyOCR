@@ -4,6 +4,7 @@ import yaml
 
 import sys
 sys.path.insert(0, "TextRecognitionDataGenerator/")
+sys.path.insert(0, "TextRecognitionDataGenerator/server")
 
 from train import train
 from utils import AttrDict
@@ -33,4 +34,6 @@ def get_config(file_path):
 #opt = get_config("config_files/en_filtered_config.yaml")
 #opt = get_config("config_files/en_filtered_config_ft.yaml")
 opt = get_config("config_files/orig_config_ft.yaml")
+#opt = get_config("config_files/orig_config_ft2.yaml")
+#opt = get_config("config_files/resnet_none_attn.yaml")
 train(opt, amp=True)

@@ -1,23 +1,25 @@
 number: '0123456789'
-symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €₽"
-lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюяЂђЃѓЄєІіЇїЈјЉљЊњЋћЌќЎўЏџҐґҒғҚқҮүҲҳҶҷӀӏӢӣӨөӮӯ'
-experiment_name: 'ru_orig_ft'
+symbol: "!#$%&()*+,-.:;<=>?@[]^{|}~ "
+lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
+experiment_name: 'resnet_none_attn'
 train_data: 'all_data'
-#valid_data: 'valid_data/ocr_doc_dataset_test'
 valid_data: False
+#valid_data: 'all_data/ocr_doc_dataset_all'
+#Text generator options tg_*
 tg_blur: 4
 tg_random_blur: True
 tg_words_len: 3
-tg_distributed: "172.25.0.86:50051"
+#tg_distributed: "172.25.0.86:50051"
+tg_distributed: False
 manualSeed: 1111
 workers: 8
-batch_size: 32 #32
+batch_size: 4 #32
 num_iter: 500000
-valInterval: 500
-saved_model: 'saved_models/1101101.pth' #'saved_models/en_filtered/iter_300000.pth'
-FT: True
+valInterval: 100
+saved_model: '' #'saved_models/cyrillic_g2.pth'
+FT: False
 optim: 'adamw' # default is Adadelta
-lr: 0.3
+lr: 1
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
@@ -27,7 +29,7 @@ grad_clip: 5
 select_data: False # this is dataset folder in train_data
 batch_ratio: '1' 
 total_data_usage_ratio: 1.0
-batch_max_length: 60
+batch_max_length: 48
 imgH: 64
 imgW: 1200
 rgb: False
@@ -38,13 +40,13 @@ contrast_adjust: 0.0
 data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
-FeatureExtraction: 'VGG'
-SequenceModeling: 'BiLSTM'
-Prediction: 'CTC'
+FeatureExtraction: 'ResNet'
+SequenceModeling: 'None'
+Prediction: 'Attn'
 num_fiducial: 20
 input_channel: 1
-output_channel: 256
-hidden_size: 256
+output_channel: 1024
+hidden_size: 1024
 decode: 'greedy'
 new_prediction: False
 freeze_FeatureFxtraction: False

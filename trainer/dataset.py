@@ -5,6 +5,8 @@ import six
 import math
 import torch
 import pandas  as pd
+import random as rnd
+from typing import Generic, TypeVar
 
 from natsort import natsorted
 from PIL import Image
@@ -13,6 +15,8 @@ from torch.utils.data import Dataset, IterableDataset, ConcatDataset, Subset
 from torch._utils import _accumulate
 import torchvision.transforms as transforms
 from TextRecognitionDataGenerator.generate import Generator as TextGen
+from TextRecognitionDataGenerator.server.client import Client as TextGenDistClient
+import multiprocessing as mp
 
 def contrast_grey(img):
     high = np.percentile(img, 90)
@@ -116,13 +120,16 @@ class Batch_Balanced_Dataset(object):
     
 class Generated_Dataset(object):
 
-    def __init__(self, opt):
+    def __init__(self, opt, ranged=False, count=None):
 
         _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust = opt.contrast_adjust)
         self.data_loader_list = []
         self.dataloader_iter_list = []
 
-        _dataset = GenDataset(opt)
+        if not ranged:
+            _dataset = GenDataset(opt)
+        else:
+            _dataset = GenDatasetRanged(opt, count)
 
         self._data_loader = torch.utils.data.DataLoader(
                 _dataset, batch_size=opt.batch_size,
@@ -131,6 +138,75 @@ class Generated_Dataset(object):
                 collate_fn=_AlignCollate, pin_memory=True)
 
         self.data_loader_iter = iter(self._data_loader)
+        
+    def get_iter(self):
+        return self.data_loader_iter
+        
+    def get_dataloader(self):
+        return self._data_loader
+
+
+    def get_batch(self):
+        balanced_batch_images = []
+        balanced_batch_texts = []
+
+
+        image, text = next(self.data_loader_iter)
+        balanced_batch_images.append(image)
+        balanced_batch_texts += text
+        
+        balanced_batch_images = torch.cat(balanced_batch_images, 0)
+
+        return balanced_batch_images, balanced_batch_texts
+    
+class GenDatasetLocal(IterableDataset):
+
+    def __init__(self, opt):
+        super(GenDataset).__init__()
+        self.opt = opt
+
+    def __iter__(self):
+        gen = TextGen(max_len=self.opt.batch_max_length, blur=self.opt.tg_blur, random_blur=self.opt.tg_random_blur, 
+                        length=self.opt.tg_words_len, 
+                        height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive)
+        
+        return gen
+    
+class GenDatasetRemote(IterableDataset):
+
+    def __init__(self, opt):
+        super(GenDataset).__init__()
+        self.opt = opt
+
+    def __iter__(self):
+        gen = TextGenDistClient(self.opt.tg_distributed)
+        gen.connect()
+        
+        return gen    
+        
+DatasetT = GenDatasetLocal | GenDatasetRemote
+
+class GenericDataset(object):
+
+    def __init__(self, opt, dataset:DatasetT, workers:int = 4):
+
+        _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust = opt.contrast_adjust)
+        self.data_loader_list = []
+        self.dataloader_iter_list = []
+
+        self._data_loader = torch.utils.data.DataLoader(
+                dataset, batch_size=opt.batch_size,
+                shuffle=False,
+                num_workers=workers, #prefetch_factor=2,# persistent_workers=True,
+                collate_fn=_AlignCollate, pin_memory=True)
+
+        self.data_loader_iter = iter(self._data_loader)
+        
+    def get_iter(self):
+        return self.data_loader_iter
+        
+    def get_dataloader(self):
+        return self._data_loader
 
 
     def get_batch(self):
@@ -176,12 +252,43 @@ class GenDataset(IterableDataset):
 
     def __init__(self, opt):
         super(GenDataset).__init__()
-        
         self.opt = opt
-        self.gen = TextGen(height=opt.imgH, rgb=opt.rgb, sensitive=opt.sensitive)
+        self.counter = mp.Value('l', 0)
+        self.id = rnd.randint(0, 256)
 
     def __iter__(self):
-        return self.gen
+        gen = None
+        i = None
+        with self.counter.get_lock():
+            i = int(self.counter.value)
+            self.counter.value += 1
+            
+                
+        if self.opt.tg_distributed and i % 2 == 0:
+            print(f"[id={self.id} counter={i}] Creating new TextGenDistClient iter")
+            gen = TextGenDistClient(self.opt.tg_distributed)
+            gen.connect()
+        else:
+            print(f"[id={self.id} counter={i}] Creating new TextGen iter")
+            gen = TextGen(max_len=self.opt.batch_max_length, blur=self.opt.tg_blur, random_blur=self.opt.tg_random_blur, 
+                          length=self.opt.tg_words_len, 
+                          height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive)
+        
+        return gen
+    
+class GenDatasetRanged(Dataset):
+
+    def __init__(self, opt, count):
+        super(GenDatasetRanged).__init__()
+        self.ds = GenDataset(opt)
+        self.count = count
+        self.gen = iter(self.ds)
+
+    def __len__(self):
+        return self.count
+    
+    def __getitem__(self, index):
+        return next(self.gen)
 
 class OCRDataset(Dataset):
 

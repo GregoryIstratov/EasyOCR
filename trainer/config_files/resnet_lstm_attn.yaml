@@ -1,42 +1,48 @@
 number: '0123456789'
-symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
-#symbol: ",-. "
+symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
-experiment_name: 'ru_filtered'
+experiment_name: 'resnet_lstm_attn'
 train_data: 'all_data'
-#valid_data: 'valid_data/ocr_doc_dataset_no_sts'
-valid_data: 'valid_data/ocr_doc_dataset_test'
+valid_data: False
+#valid_data: 'all_data/ocr_doc_dataset_all'
+#Text generator options tg_*
+tg_blur: 4
+tg_random_blur: True
+tg_words_len: 3
+#tg_distributed: "172.25.0.86:50051"
+tg_distributed: False
 manualSeed: 1111
-workers: 12
+workers: 6
 batch_size: 16 #32
-num_iter: 100000
-valInterval: 1000
-saved_model: 'saved_models/244.pth' #'saved_models/en_filtered/iter_300000.pth'
-FT: True
-optim: False # default is Adadelta
-lr: 0.1
+num_iter: 2000
+valInterval: 100
+saved_model: '' #'saved_models/cyrillic_g2.pth'
+FT: False
+optim: 'adamw' # default is Adadelta
+lr: 1
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
+#select_data: 'text_dataset_ru_gray_10k3' # this is dataset folder in train_data
 select_data: False # this is dataset folder in train_data
 batch_ratio: '1' 
 total_data_usage_ratio: 1.0
-batch_max_length: 100
+batch_max_length: 48
 imgH: 64
-imgW: 1500
+imgW: 1200
 rgb: False
 contrast_adjust: False
 sensitive: False
-PAD: False
+PAD: True
 contrast_adjust: 0.0
 data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
 FeatureExtraction: 'ResNet'
 SequenceModeling: 'BiLSTM'
-Prediction: 'CTC'
+Prediction: 'Attn'
 num_fiducial: 20
 input_channel: 1
 output_channel: 512
