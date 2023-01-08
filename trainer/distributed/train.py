@@ -33,6 +33,8 @@ from utils import CTCLabelConverter, AttnLabelConverter, Averager
 from modules.prediction import Attention
 from test import validation, validation2
 
+from torch.distributed.elastic.multiprocessing.errors import record
+
 import random
 
 cudnn.benchmark = True
@@ -66,7 +68,7 @@ def setup(world_rank, world_size, single:bool):
 def cleanup():
     dist.destroy_process_group()
     
-
+@record
 def run(rank, world_rank, world_size, single:bool, opt):
     print(f"Running DDP on world_rank: {world_rank} local_rank {rank}.")
     
@@ -78,8 +80,6 @@ def run(rank, world_rank, world_size, single:bool, opt):
         setup(world_rank, world_size, single)
     
     torch.cuda.set_device(rank)
-    
-    dist.barrier()
     
     if opt.select_data != False:
         opt.select_data = opt.select_data.split('-')

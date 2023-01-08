@@ -33,7 +33,8 @@ def get_config(file_path):
 
 #opt = get_config("config_files/en_filtered_config.yaml")
 #opt = get_config("config_files/en_filtered_config_ft.yaml")
-opt = get_config("config_files/orig_config_ft.yaml")
+#opt = get_config("config_files/orig_config_ft.yaml")
 #opt = get_config("config_files/orig_config_ft2.yaml")
 #opt = get_config("config_files/resnet_none_attn.yaml")
+opt = get_config("config_files/resnet_lstm_attn.yaml")
 train(opt, amp=True)

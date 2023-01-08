@@ -1,22 +1,53 @@
 number: '0123456789'
-symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
-experiment_name: 'resnet_lstm_attn'
+experiment_name: 'resnet_lstm_attn2'
 train_data: 'all_data'
 valid_data: False
+valid_batches_count: 100
 #valid_data: 'all_data/ocr_doc_dataset_all'
+#valid_data: 'valid_data/ocr_doc_dataset_sts'
 #Text generator options tg_*
 tg_blur: 4
 tg_random_blur: True
 tg_words_len: 3
 #tg_distributed: "172.25.0.86:50051"
 tg_distributed: False
+tg_augs:
+  allow_list:
+    - text_blur
+    - text_noise
+    - blur
+    - motion_blur
+    - sharpen
+    - downsample
+    - jpeg_artifact
+    - sin_cos
+  # number of simultanious augmentations
+  k: 2
+  # Image, Noise, Plain probabilities
+  inp_weights:
+    - 0.5
+    - 0.35
+    - 0.15
+  text_blur: 3
+  text_blur_rnd: True
+  blur: 3
+  blur_rnd: True
+  downsample_factor: 3
+  jpeg_artifact_q: 15
+  motion_blur_sz_min: 10
+  motion_blur_sz_max: 14
+  invert_chance: 0.2
+  overexposure_chance: 0.2
+  overexposure_k: 1
 manualSeed: 1111
-workers: 6
-batch_size: 16 #32
+workers: 4
+batch_size: 32 #32
 num_iter: 2000
 valInterval: 100
 saved_model: '' #'saved_models/cyrillic_g2.pth'
+#saved_model: 'saved_models/resnet_lstm_attn_88.pth' #'saved_models/cyrillic_g2.pth'
 FT: False
 optim: 'adamw' # default is Adadelta
 lr: 1
@@ -25,11 +56,11 @@ rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-#select_data: 'text_dataset_ru_gray_10k3' # this is dataset folder in train_data
+#select_data: 'ocr_doc_dataset_no_sts' # this is dataset folder in train_data
 select_data: False # this is dataset folder in train_data
 batch_ratio: '1' 
 total_data_usage_ratio: 1.0
-batch_max_length: 48
+batch_max_length: 56
 imgH: 64
 imgW: 1200
 rgb: False

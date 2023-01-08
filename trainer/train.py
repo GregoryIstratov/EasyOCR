@@ -50,8 +50,8 @@ def train(opt, show_number = 5, amp=False):
     AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust=opt.contrast_adjust)
     
     if not opt.valid_data:
-        #valid_dataset = Generated_Dataset(opt, ranged=True, count=10000)
-        valid_dataset = Generated_Dataset(opt)
+        valid_dataset = Generated_Dataset(opt, ranged=True, count=10000)
+        #valid_dataset = Generated_Dataset(opt)
         valid_loader = valid_dataset.get_dataloader()
     else:            
         valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
@@ -267,10 +267,10 @@ def train(opt, show_number = 5, amp=False):
             with open(f'./saved_models/{opt.experiment_name}/log_train.txt', 'a', encoding="utf8") as log:
                 model.eval()
                 with torch.no_grad():
-                    # valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
-                    # infer_time, length_of_data = validation(model, criterion, valid_loader, converter, opt, device)
                     valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
-                    infer_time, length_of_data = validation2(model, criterion, valid_dataset, converter, opt, device, 25)
+                    infer_time, length_of_data = validation(model, criterion, valid_loader, converter, opt, device)
+                    # valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
+                    # infer_time, length_of_data = validation2(model, criterion, valid_dataset, converter, opt, device, 25)
                 model.train()
 
                 # training loss and validation loss
@@ -299,7 +299,7 @@ def train(opt, show_number = 5, amp=False):
                 head = f'{"Ground Truth":25s} | {"Prediction":25s} | Confidence Score & T/F'
                 predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
                 
-                #show_number = min(show_number, len(labels))
+                show_number = min(show_number, len(labels))
                 
                 start = random.randint(0,len(labels) - show_number )    
                 for gt, pred, confidence in zip(labels[start:start+show_number], preds[start:start+show_number], confidence_score[start:start+show_number]):

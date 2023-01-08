@@ -168,7 +168,8 @@ class GenDatasetLocal(IterableDataset):
     def __iter__(self):
         gen = TextGen(max_len=self.opt.batch_max_length, blur=self.opt.tg_blur, random_blur=self.opt.tg_random_blur, 
                         length=self.opt.tg_words_len, 
-                        height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive)
+                        height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive, 
+                        aug_opts=dict(self.opt.tg_augs))
         
         return gen
     
@@ -272,7 +273,8 @@ class GenDataset(IterableDataset):
             print(f"[id={self.id} counter={i}] Creating new TextGen iter")
             gen = TextGen(max_len=self.opt.batch_max_length, blur=self.opt.tg_blur, random_blur=self.opt.tg_random_blur, 
                           length=self.opt.tg_words_len, 
-                          height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive)
+                          height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive,
+                          aug_opts=dict(self.opt.tg_augs))
         
         return gen
     
