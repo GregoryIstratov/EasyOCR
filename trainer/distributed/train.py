@@ -10,7 +10,7 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "TextRecognitionDataGenerator/")
 sys.path.insert(0, "TextRecognitionDataGenerator/server")
 
-from dataset import AlignCollate, Batch_Balanced_Dataset, Generated_Dataset, hierarchical_dataset, GenericDataset, GenDatasetLocal, GenDatasetRemote
+from dataset import GenDatasetLocal, GenDatasetRemote, RangedGenDataset, Dataloader, OCRDataset
 
 
 import numpy as np
@@ -74,7 +74,7 @@ def cleanup():
 def run(rank, world_rank, world_size, single:bool, opt):
     print(f"Running DDP on world_rank: {world_rank} local_rank {rank}.")
     
-    def is_log_enabled():
+    def is_master():
         return world_rank == 0
     
     if single:
@@ -86,35 +86,25 @@ def run(rank, world_rank, world_size, single:bool, opt):
     
     torch.cuda.set_device(rank)
     
-    if is_log_enabled():
+    if is_master():
         logger: logging.Logger = lg.create_logger("stdout", lg.LogLevel.INFO, filename=f"./saved_models/{opt.experiment_name}/log_output.log")
         logger.info("Running in distributer parallel mode")
     
-    if opt.select_data != False:
-        opt.select_data = opt.select_data.split('-')
-    opt.batch_ratio = opt.batch_ratio.split('-')
-    
-    if not opt.select_data:
-        if opt.tg_distributed and rank % 2 == 1:
-            train_dataset = GenericDataset(opt, GenDatasetRemote(opt), workers=opt.workers)
+    if not opt.train_data:
+        if opt.tg_distributed:
+            gen_ds = GenDatasetRemote(opt)
         else:
-            train_dataset = GenericDataset(opt, GenDatasetLocal(opt), workers=opt.workers)            
+            gen_ds = GenDatasetLocal(opt)
+            
+        train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size), workers=opt.workers)
             
     else:
-        train_dataset = Batch_Balanced_Dataset(opt)    
+        train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=64)
     
-    AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust=opt.contrast_adjust)
-    
-    if rank == 0:
-        if not opt.valid_data:
-            valid_dataset = GenericDataset(opt, GenDatasetLocal(opt), workers=4)
-        else:            
-            valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
-            valid_loader = torch.utils.data.DataLoader(
-                valid_dataset, batch_size=min(32, opt.batch_size),
-                shuffle=True,  # 'True' to check training progress with validation function.
-                num_workers=4, prefetch_factor=512,
-                collate_fn=AlignCollate_valid, pin_memory=True)     
+    if not opt.valid_data:
+        valid_dataset = Dataloader(opt, RangedGenDataset(GenDatasetLocal(opt), opt.valid_items_count), workers=4)
+    else:            
+        valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=64)
     
     """ model configuration """
     if 'CTC' in opt.Prediction:
@@ -187,7 +177,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
         filtered_parameters.append(p)
         params_num.append(np.prod(p.size()))
         
-    if is_log_enabled():
+    if is_master():
         logger.info(f'Trainable params num : {sum(params_num)}')
 
     if opt.saved_model != '':
@@ -197,7 +187,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
     # create model and move it to GPU with id rank
     ddp_model = DDP(model, device_ids=[rank], output_device=rank)
           
-    if is_log_enabled():
+    if is_master():
         logger.info(f'Loading pretrained model from {opt.saved_model}')
     
     if opt.saved_model != '':
@@ -223,98 +213,123 @@ def run(rank, world_rank, world_size, single:bool, opt):
         case 'adadelta':
             optimizer = optim.Adadelta(filtered_parameters, lr=opt.lr, rho=opt.rho, eps=opt.eps, weight_decay=0.00001)
     
-    if is_log_enabled():
+    if is_master():
         logger.info(f"Optimizer: \n{optimizer}")
         
     if opt.sched_enabled:
-        if is_log_enabled():
-            logger.info(f"Creating scheduler MulLR factor: {opt.sched_MulLR_factor} sched freq: {opt.sched_freq}")
+        if is_master():
+            logger.info(f"Creating scheduler MulLR factor: {opt.sched_MulLR_factor}")
             
         lambda1 = lambda epoch: opt.sched_MulLR_factor
-        scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lambda1)        
+        scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lambda1)  
     
     ddp_model.train() 
     #print(f"[R{rank}] DDP Model: \n{ddp_model}")    
     
     """ start training """
-    start_iter = 0
-
     start_time = time.time()
     best_accuracy = -1
     best_norm_ED = -1
-    i = start_iter
-
+    ep = 0
     scaler = GradScaler()
-    t1= time.time()
-        
-    valid_enabled = opt.saved_model != ''
-    tm_it_st = time.time()
+    total_trained: int = 0
+    valid_before = opt.saved_model != ''
     
-    show_number = 15
-    
-    while(True):
-        # print(f"[R{rank}] Train loop begin sync")
-        # dist.barrier()
-        # print(f"[R{rank}] Train loop syncronized")
-        if opt.sched_enabled and i != 0 and i % opt.sched_freq == 0:
+    for ep in range(opt.epochs):
+        if opt.sched_enabled and ep != 0:
             scheduler.step()
-            if is_log_enabled():
-                logger.info(f"[{i}/{opt.num_iter}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']}")      
-            else:
-                print(f"[W{world_rank}R{rank}][{i}/{opt.num_iter}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']}")           
+            if is_master():
+                logger.info(f"[{ep}/{opt.epochs}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']:0.7f}")
         
-        # train part
-        optimizer.zero_grad(set_to_none=True)
-        
-        if i > 0 or not valid_enabled:
-            with autocast():
-                image_tensors, labels = train_dataset.get_batch()
-                image = image_tensors.to(rank)
-                text, length = converter.encode(labels, batch_max_length=opt.batch_max_length)
-                batch_size = image.size(0)
-
-                if 'CTC' in opt.Prediction:
-                    preds = ddp_model(image, text).log_softmax(2)
-                    preds_size = torch.IntTensor([preds.size(1)] * batch_size)
-                    preds = preds.permute(1, 0, 2)
-                    torch.backends.cudnn.enabled = False
-                    cost = criterion(preds, text.to(rank), preds_size.to(rank), length.to(rank))
-                    torch.backends.cudnn.enabled = True
-                else:
-                    preds = ddp_model(image, text[:, :-1])  # align with Attention.forward
-                    target = text[:, 1:]  # without [GO] Symbol
-                    cost = criterion(preds.view(-1, preds.shape[-1]), target.contiguous().view(-1))
-            scaler.scale(cost).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), opt.grad_clip)
-            scaler.step(optimizer)
-            scaler.update()
-            loss_avg.add(cost)
-        
-        if i % 100 == 0:
-            tm_end = time.time()
-            elapsed = tm_end - tm_it_st
-            tm_it_st = time.time()
-            if is_log_enabled():
-                logger.info(f"[{i}/{opt.num_iter}] Loss: {loss_avg.val()} lr: {optimizer.param_groups[0]['lr']} time: {elapsed:0.5f} sec")
-            else:
-                print(f"[W{world_rank}R{rank}][{i}/{opt.num_iter}] Loss: {loss_avg.val()} lr: {optimizer.param_groups[0]['lr']} time: {elapsed:0.5f} sec")
-
-        # validation part
-        if (world_rank == 0 and i % opt.valInterval == 0 and valid_enabled):
-            logger.info(f'training time: {time.time()-t1}')
+        def train():
+            amp = opt.amp
             t1=time.time()
+            nonlocal loss_avg
+            nonlocal total_trained
+            tm_it_st = time.time()
+            num_batches = len(train_dataset)
+            if is_master():
+                logger.info(f"Staring new epoch [{ep+1:02d}/{opt.epochs}], batches={num_batches}")
+            items_trained = 0
+            for i, (image_tensors, labels) in enumerate(train_dataset):
+                total_trained = total_trained + image_tensors.size(0)                
+                items_trained = items_trained + image_tensors.size(0)                
+                
+                # train part
+                optimizer.zero_grad(set_to_none=True)
+                
+                text, length = converter.encode(labels, batch_max_length=opt.batch_max_length)
+                
+                if amp:
+                    with autocast():
+                        image = image_tensors.to(rank)
+                        batch_size = image.size(0)
+
+                        if 'CTC' in opt.Prediction:
+                            preds = ddp_model(image, text).log_softmax(2)
+                            preds_size = torch.IntTensor([preds.size(1)] * batch_size)
+                            preds = preds.permute(1, 0, 2)
+                            torch.backends.cudnn.enabled = False
+                            cost = criterion(preds, text.to(rank), preds_size.to(rank), length.to(rank))
+                            torch.backends.cudnn.enabled = True
+                        else:
+                            preds = ddp_model(image, text[:, :-1])  # align with Attention.forward
+                            target = text[:, 1:]  # without [GO] Symbol
+                            cost = criterion(preds.view(-1, preds.shape[-1]), target.contiguous().view(-1))
+                    scaler.scale(cost).backward()
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), opt.grad_clip)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    image = image_tensors.to(rank)
+                    batch_size = image.size(0)
+                    if 'CTC' in opt.Prediction:
+                        preds = ddp_model(image, text).log_softmax(2)
+                        preds_size = torch.IntTensor([preds.size(1)] * batch_size)
+                        preds = preds.permute(1, 0, 2)
+                        torch.backends.cudnn.enabled = False
+                        cost = criterion(preds, text.to(rank), preds_size.to(rank), length.to(rank))
+                        torch.backends.cudnn.enabled = True
+                    else:
+                        preds = ddp_model(image, text[:, :-1])  # align with Attention.forward
+                        target = text[:, 1:]  # without [GO] Symbol
+                        cost = criterion(preds.view(-1, preds.shape[-1]), target.contiguous().view(-1))
+                    cost.backward()
+                    torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), opt.grad_clip) 
+                    optimizer.step()
+                loss_avg.add(cost)
+    
+                if i % 4 == 0 or i == (num_batches - 1):
+                    tm_end = time.time()
+                    elapsed = tm_end - tm_it_st
+                    tm_it_st = time.time()
+                    if is_master():
+                        logger.info(f"[ep {ep+1:03d}/{opt.epochs:03d}][{i+1:03d}/{num_batches:03d}] items trained (total: {total_trained:06d} ep: {items_trained:06d}) loss: {loss_avg.val():0.4f} lr: {optimizer.param_groups[0]['lr']:0.7f} time: {elapsed:0.5f} sec")
+            
+            if is_master():        
+                logger.info(f'training time: {time.time()-t1}')      
+
+        def validate():
+            nonlocal best_accuracy
+            nonlocal best_norm_ED
+            nonlocal loss_avg
+            # validation part
+            logger.info("Begin validation...")
             elapsed_time = time.time() - start_time
+            t1=time.time()
             # for log
             with open(f'./saved_models/{opt.experiment_name}/log_train.txt', 'a', encoding="utf8") as log:
                 ddp_model.eval()
                 with torch.no_grad():
+                    # valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
+                    # infer_time, length_of_data = validation(ddp_model, criterion, valid_loader, converter, opt, rank)
                     valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels,\
-                    infer_time, length_of_data = validation2(ddp_model, criterion, valid_dataset, converter, opt, rank, 25)
+                    infer_time, length_of_data = validation2(ddp_model, criterion, valid_dataset, converter, opt, rank)
                 ddp_model.train()
 
                 # training loss and validation loss
-                loss_log = f'[{i}/{opt.num_iter}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
+                loss_log = f'[ep {ep+1}/{opt.epochs}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
                 loss_avg.reset()
 
                 current_model_log = f'{"Current_accuracy":17s}: {current_accuracy:0.3f}, {"Current_norm_ED":17s}: {current_norm_ED:0.4f}'
@@ -331,7 +346,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
                 best_model_log = f'{"Best_accuracy":17s}: {best_accuracy:0.3f}, {"Best_norm_ED":17s}: {best_norm_ED:0.4f}'
 
                 loss_model_log = f'{loss_log}\n{current_model_log}\n{best_model_log}'
-                logger.info(loss_model_log)
+                #logger.info(loss_model_log)
                 log.write(loss_model_log + '\n')
 
                 # show some predicted results
@@ -339,7 +354,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
                 head = f'{"Ground Truth":25s} | {"Prediction":25s} | Confidence Score & T/F'
                 predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
                 
-                show_number = min(show_number, len(labels))
+                show_number = min(opt.val_show_number, len(labels))
                 
                 start = random.randint(0,len(labels) - show_number )    
                 for gt, pred, confidence in zip(labels[start:start+show_number], preds[start:start+show_number], confidence_score[start:start+show_number]):
@@ -349,29 +364,19 @@ def run(rank, world_rank, world_size, single:bool, opt):
 
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
-                logger.info(predicted_result_log)
+                logger.info(f"\n{loss_model_log}\n{predicted_result_log}")
                 log.write(predicted_result_log + '\n')
                 logger.info(f'validation time: {time.time()-t1}')
-                t1=time.time()
-                tm_it_st = time.time()
                 
-        valid_enabled = True
-        # save model per 1e+4 iter.
-        if (i + 1) % 5000 == 0:            
-            CHECKPOINT_PATH = f'./saved_models/{opt.experiment_name}/iter_{i+1}.pth'
-            if rank == 0:
-                # All processes should see same parameters as they all start from same
-                # random parameters and gradients are synchronized in backward passes.
-                # Therefore, saving it in one process is sufficient.
-                torch.save(ddp_model.state_dict(), CHECKPOINT_PATH)
+        if is_master() and valid_before:
+            valid_before = False
+            validate()
             
-        if i == opt.num_iter:
-            print('end the training')
-            break
-        i += 1    
+        train()
         
-        # print(f"[R{rank}] Syncronizing at loop end")
-        # dist.barrier()
+        if is_master():
+            validate()
+            torch.save(ddp_model.state_dict(), f'./saved_models/{opt.experiment_name}/ep_{ep+1}.pth')
 
     cleanup()
     

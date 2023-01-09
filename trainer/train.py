@@ -195,7 +195,7 @@ def train(opt):
     for ep in range(opt.epochs):
         if opt.sched_enabled and ep != 0:
             scheduler.step()
-            logger.info(f"[{ep}/{opt.epochs}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']:0.7f}")    
+            logger.info(f"[{ep}/{opt.epochs}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']:0.7f}")
                 
         def train():
             amp = opt.amp

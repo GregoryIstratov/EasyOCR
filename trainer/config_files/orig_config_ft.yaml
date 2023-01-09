@@ -3,8 +3,8 @@ symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €₽"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюяЂђЃѓЄєІіЇїЈјЉљЊњЋћЌќЎўЏџҐґҒғҚқҮүҲҳҶҷӀӏӢӣӨөӮӯ'
 experiment_name: 'ru_orig_ft_new'
 train_data: False
-valid_items_count: 2000
 valid_data: False
+valid_items_count: 2000
 #Text generator options tg_*
 tg_blur: 4
 tg_random_blur: True
@@ -45,14 +45,13 @@ batch_size: 64 #32
 epochs: 50
 epoch_size: 20000
 val_show_number: 15
-#saved_model: 'saved_models/cyrillic_g2.pth' #'saved_models/en_filtered/iter_300000.pth'
-saved_model: 'saved_models/ru_orig_ft_new/79.pth' #'saved_models/en_filtered/iter_300000.pth'
+saved_model: 'saved_models/ru_orig_ft_new/720.pth' #'saved_models/en_filtered/iter_300000.pth'
 FT: True
 amp: True
 optim: 'adamw' # default is Adadelta
 lr: 0.1
 sched_enabled: True
-sched_MulLR_factor: 0.95
+sched_MulLR_factor: 0.97
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
