@@ -1,7 +1,7 @@
 number: '0123456789'
 symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
-experiment_name: 'resnet_lstm_attn2'
+experiment_name: 'resnet_lstm_ctc'
 train_data: 'all_data'
 valid_data: False
 valid_batches_count: 100
@@ -45,12 +45,12 @@ manualSeed: 1111
 workers: 8
 batch_size: 24 #32
 num_iter: 5000
-valInterval: 100
+valInterval: 500
 saved_model: '' #'saved_models/cyrillic_g2.pth'
 #saved_model: 'saved_models/resnet_lstm_attn_88.pth' #'saved_models/cyrillic_g2.pth'
 FT: False
 optim: 'adamw' # default is Adadelta
-lr: 2
+lr: 1
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
@@ -73,7 +73,7 @@ data_filtering_off: True
 Transformation: 'None'
 FeatureExtraction: 'ResNet'
 SequenceModeling: 'BiLSTM'
-Prediction: 'Attn'
+Prediction: 'CTC'
 num_fiducial: 20
 input_channel: 1
 output_channel: 512

@@ -118,51 +118,17 @@ class Batch_Balanced_Dataset(object):
 
         return balanced_batch_images, balanced_batch_texts
     
-class Generated_Dataset(object):
-
-    def __init__(self, opt, ranged=False, count=None):
-
-        _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust = opt.contrast_adjust)
-        self.data_loader_list = []
-        self.dataloader_iter_list = []
-
-        if not ranged:
-            _dataset = GenDataset(opt)
-        else:
-            _dataset = GenDatasetRanged(opt, count)
-
-        self._data_loader = torch.utils.data.DataLoader(
-                _dataset, batch_size=opt.batch_size,
-                shuffle=False,
-                num_workers=int(opt.workers), #prefetch_factor=2,# persistent_workers=True,
-                collate_fn=_AlignCollate, pin_memory=True)
-
-        self.data_loader_iter = iter(self._data_loader)
+class GenDatasetBase(IterableDataset):
+    def __init__(self) -> None:
+        super().__init__()
         
-    def get_iter(self):
-        return self.data_loader_iter
-        
-    def get_dataloader(self):
-        return self._data_loader
-
-
-    def get_batch(self):
-        balanced_batch_images = []
-        balanced_batch_texts = []
-
-
-        image, text = next(self.data_loader_iter)
-        balanced_batch_images.append(image)
-        balanced_batch_texts += text
-        
-        balanced_batch_images = torch.cat(balanced_batch_images, 0)
-
-        return balanced_batch_images, balanced_batch_texts
+    def __iter__(self):
+        raise NotImplementedError        
     
-class GenDatasetLocal(IterableDataset):
+class GenDatasetLocal(GenDatasetBase):
 
     def __init__(self, opt):
-        super(GenDataset).__init__()
+        super().__init__()
         self.opt = opt
 
     def __iter__(self):
@@ -173,10 +139,10 @@ class GenDatasetLocal(IterableDataset):
         
         return gen
     
-class GenDatasetRemote(IterableDataset):
+class GenDatasetRemote(GenDatasetBase):
 
     def __init__(self, opt):
-        super(GenDataset).__init__()
+        super().__init__()
         self.opt = opt
 
     def __iter__(self):
@@ -184,12 +150,26 @@ class GenDatasetRemote(IterableDataset):
         gen.connect()
         
         return gen    
+    
+    
+class RangedGenDataset(Dataset):
+    def __init__(self, gen_dataset: GenDatasetBase, n_samples: int) -> None:
+        super().__init__()
+        self.ds = gen_dataset
+        self.iter = iter(self.ds)
+        self.n_samples = n_samples
+    
+    def __len__(self):
+        return self.n_samples
+    
+    def __getitem__(self, index):
+        return next(self.iter)
         
-DatasetT = GenDatasetLocal | GenDatasetRemote
+DatasetT = GenDatasetLocal | GenDatasetRemote | Dataset
 
-class GenericDataset(object):
+class IterDataloader(object):
 
-    def __init__(self, opt, dataset:DatasetT, workers:int = 4):
+    def __init__(self, opt, dataset:DatasetT, workers:int = 4, prefetch_factor: int = 2, shuffle: bool = False):
 
         _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust = opt.contrast_adjust)
         self.data_loader_list = []
@@ -197,31 +177,56 @@ class GenericDataset(object):
 
         self._data_loader = torch.utils.data.DataLoader(
                 dataset, batch_size=opt.batch_size,
-                shuffle=False,
-                num_workers=workers, #prefetch_factor=2,# persistent_workers=True,
+                shuffle=shuffle,
+                num_workers=workers, prefetch_factor=prefetch_factor, persistent_workers=True,
                 collate_fn=_AlignCollate, pin_memory=True)
 
         self.data_loader_iter = iter(self._data_loader)
         
-    def get_iter(self):
+    def __iter__(self):
         return self.data_loader_iter
+    
+    def __next__(self):
+        return self.get_batch()
+
+    def get_batch(self):       
+        try:
+            image, text = next(self.data_loader_iter)
+        except StopIteration:
+            self.data_loader_iter = iter(self._data_loader)
+            return self.get_batch()
+
+        return image, text
+    
+class Dataloader(object):
+
+    def __init__(self, opt, dataset:Dataset, workers:int = 4, prefetch_factor: int = 2, shuffle: bool = False):
+
+        _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, contrast_adjust = opt.contrast_adjust)
+        self.dataset = dataset
+
+        self._data_loader = torch.utils.data.DataLoader(
+                dataset, batch_size=opt.batch_size,
+                shuffle=shuffle,
+                num_workers=workers, prefetch_factor=prefetch_factor, persistent_workers=True,
+                collate_fn=_AlignCollate, pin_memory=True)
+
+        self.data_loader_iter = iter(self._data_loader)
         
-    def get_dataloader(self):
-        return self._data_loader
+    def __len__(self):
+        return len(self._data_loader)
+    
+    def __iter__(self):
+        return iter(self._data_loader)
 
+    # def get_batch(self):       
+    #     try:
+    #         image, text = next(self.data_loader_iter)
+    #     except StopIteration:
+    #         self.data_loader_iter = iter(self._data_loader)
+    #         return self.get_batch()
 
-    def get_batch(self):
-        balanced_batch_images = []
-        balanced_batch_texts = []
-
-
-        image, text = next(self.data_loader_iter)
-        balanced_batch_images.append(image)
-        balanced_batch_texts += text
-        
-        balanced_batch_images = torch.cat(balanced_batch_images, 0)
-
-        return balanced_batch_images, balanced_batch_texts
+    #     return image, text
 
 
 def hierarchical_dataset(root, opt, select_data='/'):
@@ -248,6 +253,9 @@ def hierarchical_dataset(root, opt, select_data='/'):
     concatenated_dataset = ConcatDataset(dataset_list)
 
     return concatenated_dataset, dataset_log
+
+
+
 
 class GenDataset(IterableDataset):
 

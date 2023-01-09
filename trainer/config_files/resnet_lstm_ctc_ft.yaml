@@ -1,12 +1,14 @@
 number: '0123456789'
 symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
-experiment_name: 'resnet_lstm_attn2'
-train_data: 'all_data'
+experiment_name: 'resnet_lstm_ctc'
+#train_data: 'all_data/ocr_doc_dataset_sts'
+train_data: False
+valid_items_count: 300
 valid_data: False
-valid_batches_count: 100
 #valid_data: 'all_data/ocr_doc_dataset_all'
 #valid_data: 'valid_data/ocr_doc_dataset_sts'
+#valid_data: 'valid_data/ocr_doc_dataset_test'
 #Text generator options tg_*
 tg_blur: 4
 tg_random_blur: True
@@ -42,24 +44,27 @@ tg_augs:
   overexposure_chance: 0.2
   overexposure_k: 1
 manualSeed: 1111
-workers: 8
-batch_size: 24 #32
-num_iter: 5000
-valInterval: 100
-saved_model: '' #'saved_models/cyrillic_g2.pth'
-#saved_model: 'saved_models/resnet_lstm_attn_88.pth' #'saved_models/cyrillic_g2.pth'
-FT: False
+workers: 12
+batch_size: 32 #32
+epochs: 20
+epoch_size: 1000
+num_iter: 50000
+valInterval: 500
+val_show_number: 15
+#saved_model: '' #'saved_models/cyrillic_g2.pth'
+saved_model: 'saved_models/resnet_lstm_ctc/82.pth' #'saved_models/cyrillic_g2.pth'
+FT: True
 optim: 'adamw' # default is Adadelta
-lr: 2
+amp: True
+lr: 0.2
+sched_enabled: True
+sched_MulLR_factor: 0.95
+sched_freq: 1000
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-#select_data: 'ocr_doc_dataset_no_sts' # this is dataset folder in train_data
-select_data: False # this is dataset folder in train_data
-batch_ratio: '1' 
-total_data_usage_ratio: 1.0
 batch_max_length: 56
 imgH: 64
 imgW: 1200
@@ -73,7 +78,7 @@ data_filtering_off: True
 Transformation: 'None'
 FeatureExtraction: 'ResNet'
 SequenceModeling: 'BiLSTM'
-Prediction: 'Attn'
+Prediction: 'CTC'
 num_fiducial: 20
 input_channel: 1
 output_channel: 512

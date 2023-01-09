@@ -36,6 +36,8 @@ from test import validation, validation2
 from torch.distributed.elastic.multiprocessing.errors import record
 
 import random
+import logging
+import logger as lg
 
 cudnn.benchmark = True
 cudnn.deterministic = False
@@ -72,6 +74,9 @@ def cleanup():
 def run(rank, world_rank, world_size, single:bool, opt):
     print(f"Running DDP on world_rank: {world_rank} local_rank {rank}.")
     
+    def is_log_enabled():
+        return world_rank == 0
+    
     if single:
         os.environ['MASTER_ADDR'] = '127.0.0.1'
         os.environ['MASTER_PORT'] = '12355'
@@ -80,6 +85,10 @@ def run(rank, world_rank, world_size, single:bool, opt):
         setup(world_rank, world_size, single)
     
     torch.cuda.set_device(rank)
+    
+    if is_log_enabled():
+        logger: logging.Logger = lg.create_logger("stdout", lg.LogLevel.INFO, filename=f"./saved_models/{opt.experiment_name}/log_output.log")
+        logger.info("Running in distributer parallel mode")
     
     if opt.select_data != False:
         opt.select_data = opt.select_data.split('-')
@@ -117,9 +126,6 @@ def run(rank, world_rank, world_size, single:bool, opt):
     if opt.rgb:
         opt.input_channel = 3
     model = Model(opt)
-    print(f'[R{rank}] model input parameters', opt.imgH, opt.imgW, opt.num_fiducial, opt.input_channel, opt.output_channel,
-          opt.hidden_size, opt.num_class, opt.batch_max_length, opt.Transformation, opt.FeatureExtraction,
-          opt.SequenceModeling, opt.Prediction)
 
     if opt.saved_model != '':
         if opt.new_prediction:
@@ -180,15 +186,19 @@ def run(rank, world_rank, world_size, single:bool, opt):
     for p in filter(lambda p: p.requires_grad, model.parameters()):
         filtered_parameters.append(p)
         params_num.append(np.prod(p.size()))
-    print(f'[R{rank}] Trainable params num : ', sum(params_num))             
+        
+    if is_log_enabled():
+        logger.info(f'Trainable params num : {sum(params_num)}')
 
     if opt.saved_model != '':
         map_location = {'cuda:%d' % 0: 'cuda:%d' % rank}
         pretrained_dict = torch.load(opt.saved_model, map_location=map_location)
     #model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     # create model and move it to GPU with id rank
-    ddp_model = DDP(model, device_ids=[rank], output_device=rank)        
-    print(f'[R{rank}] loading pretrained model from {opt.saved_model}')
+    ddp_model = DDP(model, device_ids=[rank], output_device=rank)
+          
+    if is_log_enabled():
+        logger.info(f'Loading pretrained model from {opt.saved_model}')
     
     if opt.saved_model != '':
         ddp_model.load_state_dict(pretrained_dict, strict=False)
@@ -212,7 +222,16 @@ def run(rank, world_rank, world_size, single:bool, opt):
             optimizer = optim.Adam(filtered_parameters, lr=lr)
         case 'adadelta':
             optimizer = optim.Adadelta(filtered_parameters, lr=opt.lr, rho=opt.rho, eps=opt.eps, weight_decay=0.00001)
-    print(f"[R{rank}] Optimizer: \n{optimizer}")
+    
+    if is_log_enabled():
+        logger.info(f"Optimizer: \n{optimizer}")
+        
+    if opt.sched_enabled:
+        if is_log_enabled():
+            logger.info(f"Creating scheduler MulLR factor: {opt.sched_MulLR_factor} sched freq: {opt.sched_freq}")
+            
+        lambda1 = lambda epoch: opt.sched_MulLR_factor
+        scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lambda1)        
     
     ddp_model.train() 
     #print(f"[R{rank}] DDP Model: \n{ddp_model}")    
@@ -237,6 +256,12 @@ def run(rank, world_rank, world_size, single:bool, opt):
         # print(f"[R{rank}] Train loop begin sync")
         # dist.barrier()
         # print(f"[R{rank}] Train loop syncronized")
+        if opt.sched_enabled and i != 0 and i % opt.sched_freq == 0:
+            scheduler.step()
+            if is_log_enabled():
+                logger.info(f"[{i}/{opt.num_iter}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']}")      
+            else:
+                print(f"[W{world_rank}R{rank}][{i}/{opt.num_iter}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']}")           
         
         # train part
         optimizer.zero_grad(set_to_none=True)
@@ -270,11 +295,14 @@ def run(rank, world_rank, world_size, single:bool, opt):
             tm_end = time.time()
             elapsed = tm_end - tm_it_st
             tm_it_st = time.time()
-            print(f"[W{world_rank}R{rank}][{i}/{opt.num_iter}] Loss: {loss_avg.val()} time: {elapsed:0.5f} sec")
+            if is_log_enabled():
+                logger.info(f"[{i}/{opt.num_iter}] Loss: {loss_avg.val()} lr: {optimizer.param_groups[0]['lr']} time: {elapsed:0.5f} sec")
+            else:
+                print(f"[W{world_rank}R{rank}][{i}/{opt.num_iter}] Loss: {loss_avg.val()} lr: {optimizer.param_groups[0]['lr']} time: {elapsed:0.5f} sec")
 
         # validation part
-        if (rank == 0 and world_rank == 0 and i % opt.valInterval == 0 and valid_enabled):
-            print('training time: ', time.time()-t1)
+        if (world_rank == 0 and i % opt.valInterval == 0 and valid_enabled):
+            logger.info(f'training time: {time.time()-t1}')
             t1=time.time()
             elapsed_time = time.time() - start_time
             # for log
@@ -303,7 +331,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
                 best_model_log = f'{"Best_accuracy":17s}: {best_accuracy:0.3f}, {"Best_norm_ED":17s}: {best_norm_ED:0.4f}'
 
                 loss_model_log = f'{loss_log}\n{current_model_log}\n{best_model_log}'
-                print(loss_model_log)
+                logger.info(loss_model_log)
                 log.write(loss_model_log + '\n')
 
                 # show some predicted results
@@ -321,9 +349,9 @@ def run(rank, world_rank, world_size, single:bool, opt):
 
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
-                print(predicted_result_log)
+                logger.info(predicted_result_log)
                 log.write(predicted_result_log + '\n')
-                print('validation time: ', time.time()-t1)
+                logger.info(f'validation time: {time.time()-t1}')
                 t1=time.time()
                 tm_it_st = time.time()
                 

@@ -111,17 +111,15 @@ def validation(model, criterion, evaluation_loader, converter, opt, device):
 
     return valid_loss_avg.val(), accuracy, norm_ED, preds_str, confidence_score_list, labels, infer_time, length_of_data
 
-def validation2(model, criterion, valid_dataset, converter, opt, device, count):
+def validation2(model, criterion, valid_dataset, converter, opt, device):
     """ validation or evaluation """
     n_correct = 0
     norm_ED = 0
     length_of_data = 0
     infer_time = 0
     valid_loss_avg = Averager()
-
-    it = valid_dataset.get_iter()
-    for i in range(count):
-        image_tensors, labels = next(it)
+    
+    for i, (image_tensors, labels) in enumerate(valid_dataset):                
         batch_size = image_tensors.size(0)
         length_of_data = length_of_data + batch_size
         image = image_tensors.to(device)
