@@ -2,13 +2,9 @@ number: '0123456789'
 symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
 experiment_name: 'resnet_lstm_ctc'
-#train_data: 'all_data/ocr_doc_dataset_sts'
 train_data: False
 valid_items_count: 300
 valid_data: False
-#valid_data: 'all_data/ocr_doc_dataset_all'
-#valid_data: 'valid_data/ocr_doc_dataset_sts'
-#valid_data: 'valid_data/ocr_doc_dataset_test'
 #Text generator options tg_*
 tg_blur: 4
 tg_random_blur: True
@@ -48,14 +44,11 @@ workers: 12
 batch_size: 32 #32
 epochs: 20
 epoch_size: 1000
-num_iter: 50000
-valInterval: 500
 val_show_number: 15
-#saved_model: '' #'saved_models/cyrillic_g2.pth'
 saved_model: 'saved_models/resnet_lstm_ctc/82.pth' #'saved_models/cyrillic_g2.pth'
 FT: True
-optim: 'adamw' # default is Adadelta
 amp: True
+optim: 'adamw' # default is Adadelta
 lr: 0.2
 sched_enabled: True
 sched_MulLR_factor: 0.95

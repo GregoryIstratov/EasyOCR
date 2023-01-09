@@ -168,7 +168,7 @@ def train(opt):
     logger.info(optimizer)
     
     if opt.sched_enabled:
-        logger.info(f"Creating scheduler MulLR factor: {opt.sched_MulLR_factor} sched freq: {opt.sched_freq}")
+        logger.info(f"Creating scheduler MulLR factor: {opt.sched_MulLR_factor}")
         lambda1 = lambda epoch: opt.sched_MulLR_factor
         scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lambda1)     
 
@@ -189,22 +189,27 @@ def train(opt):
     best_norm_ED = -1
     ep = 0
     scaler = GradScaler()
-        
-    valid_enabled = opt.saved_model != ''
+    total_trained: int = 0
+    valid_before = opt.saved_model != ''
     
     for ep in range(opt.epochs):
         if opt.sched_enabled and ep != 0:
             scheduler.step()
-            logger.info(f"[{ep}/{opt.epochs}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']}")    
+            logger.info(f"[{ep}/{opt.epochs}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']:0.7f}")    
                 
         def train():
             amp = opt.amp
             t1=time.time()
+            nonlocal loss_avg
+            nonlocal total_trained
             tm_it_st = time.time()
             num_batches = len(train_dataset)
-            logger.info(f"Staring new epoch, batches={num_batches}")
+            logger.info(f"Staring new epoch [{ep+1:02d}/{opt.epochs}], batches={num_batches}")
             items_trained = 0
             for i, (image_tensors, labels) in enumerate(train_dataset):
+                total_trained = total_trained + image_tensors.size(0)                
+                items_trained = items_trained + image_tensors.size(0)                
+                
                 # train part
                 optimizer.zero_grad(set_to_none=True)
                 
@@ -249,19 +254,19 @@ def train(opt):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip) 
                     optimizer.step()
                 loss_avg.add(cost)
-                
-                items_trained = items_trained + batch_size
+    
                 if i % 4 == 0 or i == (num_batches - 1):
                     tm_end = time.time()
                     elapsed = tm_end - tm_it_st
                     tm_it_st = time.time()
-                    logger.info(f"[ep {ep+1:02d}/{opt.epochs}][{i+1:02d}/{num_batches}] item trained: {items_trained} loss: {loss_avg.val()} lr: {optimizer.param_groups[0]['lr']} time: {elapsed:0.5f} sec")
+                    logger.info(f"[ep {ep+1:03d}/{opt.epochs:03d}][{i+1:03d}/{num_batches:03d}] items trained (total: {total_trained:06d} ep: {items_trained:06d}) loss: {loss_avg.val():0.4f} lr: {optimizer.param_groups[0]['lr']:0.7f} time: {elapsed:0.5f} sec")
                     
             logger.info(f'training time: {time.time()-t1}')                 
 
         def validate():
             nonlocal best_accuracy
             nonlocal best_norm_ED
+            nonlocal loss_avg
             # validation part
             logger.info("Begin validation...")
             elapsed_time = time.time() - start_time
@@ -277,7 +282,7 @@ def train(opt):
                 model.train()
 
                 # training loss and validation loss
-                loss_log = f'[ep {ep}/{opt.epochs}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
+                loss_log = f'[ep {ep+1}/{opt.epochs}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
                 loss_avg.reset()
 
                 current_model_log = f'{"Current_accuracy":17s}: {current_accuracy:0.3f}, {"Current_norm_ED":17s}: {current_norm_ED:0.4f}'
@@ -316,7 +321,8 @@ def train(opt):
                 log.write(predicted_result_log + '\n')
                 logger.info(f'validation time: {time.time()-t1}')
                 
-        if valid_enabled:
+        if valid_before:
+            valid_before = False
             validate()
             
         train()
