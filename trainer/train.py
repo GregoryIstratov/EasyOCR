@@ -255,13 +255,17 @@ def train(opt):
                     optimizer.step()
                 loss_avg.add(cost)
     
-                if i % 4 == 0 or i == (num_batches - 1):
-                    tm_end = time.time()
-                    elapsed = tm_end - tm_it_st
-                    tm_it_st = time.time()
-                    logger.info(f"[ep {ep+1:03d}/{opt.epochs:03d}][{i+1:03d}/{num_batches:03d}] items trained (total: {total_trained:06d} ep: {items_trained:06d}) loss: {loss_avg.val():0.4f} lr: {optimizer.param_groups[0]['lr']:0.7f} time: {elapsed:0.5f} sec")
-                    
-            logger.info(f'training time: {time.time()-t1}')                 
+                if i % 8 == 0 or i == (num_batches - 1):
+                    tm_now = time.time()
+                    elapsed = tm_now - tm_it_st
+                    elapsed_ep_st = tm_now - t1 
+                    tm_it_st = tm_now
+                    items_sec = items_trained / elapsed_ep_st
+                    logger.info(f"[ep {ep+1:03d}/{opt.epochs:03d}][{i+1:03d}/{num_batches:03d}] items trained (total: {total_trained:06d} ep: {items_trained:06d}) loss: {loss_avg.val():0.4f} lr: {optimizer.param_groups[0]['lr']:0.7f} time: {elapsed:0.5f} sec items/sec: {items_sec:0.1f}")
+            
+            epoch_elapsed = time.time() - t1
+            items_sec = items_trained / epoch_elapsed
+            logger.info(f'Epoch {ep+1}/{opt.epochs} end, training time: {epoch_elapsed:0.5f} items itrained: {items_trained:06d} items/sec: {items_sec:0.1f}')                 
 
         def validate():
             nonlocal best_accuracy
@@ -328,5 +332,8 @@ def train(opt):
         train()
         validate()
         # save model per 1e+4 iter.
-        torch.save(model.state_dict(), f'./saved_models/{opt.experiment_name}/ep_{ep+1}.pth')
+        
+        save_path = f'./saved_models/{opt.experiment_name}/ep_{ep+1}.pth'
+        logger.info(f"Saving to {save_path}")
+        torch.save(model.state_dict(), save_path)
 

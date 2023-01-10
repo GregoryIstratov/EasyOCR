@@ -39,9 +39,6 @@ import random
 import logging
 import logger as lg
 
-cudnn.benchmark = True
-cudnn.deterministic = False
-
 def get_config(file_path):
     with open(file_path, 'r', encoding="utf8") as stream:
         opt = yaml.safe_load(stream)
@@ -63,7 +60,9 @@ def get_config(file_path):
 # For TcpStore, same way as on Linux.
 
 def setup(world_rank, world_size, single:bool):
-
+    cudnn.benchmark = True
+    cudnn.deterministic = False
+    
     # initialize the process group
     dist.init_process_group("nccl", init_method="env://", rank=world_rank, world_size=world_size)
 
@@ -96,7 +95,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
         else:
             gen_ds = GenDatasetLocal(opt)
             
-        train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size), workers=opt.workers)
+        train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size // world_size), workers=opt.workers)
             
     else:
         train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=64)
@@ -301,14 +300,19 @@ def run(rank, world_rank, world_size, single:bool, opt):
                 loss_avg.add(cost)
     
                 if i % 4 == 0 or i == (num_batches - 1):
-                    tm_end = time.time()
-                    elapsed = tm_end - tm_it_st
-                    tm_it_st = time.time()
+                    tm_now = time.time()
+                    elapsed = tm_now - tm_it_st
+                    elapsed_ep_st = tm_now - t1 
+                    tm_it_st = tm_now
+                    items_sec = items_trained / elapsed_ep_st * world_size
                     if is_master():
-                        logger.info(f"[ep {ep+1:03d}/{opt.epochs:03d}][{i+1:03d}/{num_batches:03d}] items trained (total: {total_trained:06d} ep: {items_trained:06d}) loss: {loss_avg.val():0.4f} lr: {optimizer.param_groups[0]['lr']:0.7f} time: {elapsed:0.5f} sec")
+                        logger.info(f"[ep {ep+1:03d}/{opt.epochs:03d}][{i+1:03d}/{num_batches:03d}] items trained (total: {total_trained * world_size:06d} ep: {items_trained * world_size:06d}) loss: {loss_avg.val():0.4f} lr: {optimizer.param_groups[0]['lr']:0.7f} time: {elapsed:0.5f} sec items/sec: {items_sec:0.1f}")
             
             if is_master():        
-                logger.info(f'training time: {time.time()-t1}')      
+                epoch_elapsed = time.time() - t1
+                items_sec = items_trained / epoch_elapsed * world_size
+                logger.info(f'Epoch {ep+1}/{opt.epochs} end, training time: {epoch_elapsed:0.5f} items itrained: {items_trained * world_size:06d} items/sec: {items_sec:0.1f}')                 
+
 
         def validate():
             nonlocal best_accuracy
@@ -376,7 +380,9 @@ def run(rank, world_rank, world_size, single:bool, opt):
         
         if is_master():
             validate()
-            torch.save(ddp_model.state_dict(), f'./saved_models/{opt.experiment_name}/ep_{ep+1}.pth')
+            save_path = f'./saved_models/{opt.experiment_name}/ep_{ep+1}.pth'
+            logger.info(f"Saving to {save_path}")
+            torch.save(model.state_dict(), save_path)
 
     cleanup()
     
