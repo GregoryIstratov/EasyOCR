@@ -382,7 +382,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
             validate()
             save_path = f'./saved_models/{opt.experiment_name}/ep_{ep+1}.pth'
             logger.info(f"Saving to {save_path}")
-            torch.save(model.state_dict(), save_path)
+            torch.save(ddp_model.state_dict(), save_path)
 
     cleanup()
     
