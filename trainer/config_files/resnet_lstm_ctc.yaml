@@ -12,6 +12,7 @@ status_every_batch: 16
 tg_distributed: False
 tg_dbg_server: True
 tg_settings:
+  filter_chars: ''
   generators:
     - rnd
     - en
