@@ -38,12 +38,18 @@ from torch.distributed.elastic.multiprocessing.errors import record
 import random
 import logging
 import logger as lg
+from threading import Thread
+from TextRecognitionDataGenerator.trdg_server import launch_trdg_server
 
 def get_config(file_path):
     with open(file_path, 'r', encoding="utf8") as stream:
         opt = yaml.safe_load(stream)
     opt = AttrDict(opt)
     opt.character = opt.number + opt.symbol + opt.lang_char
+    opt.tg_settings['symbols'] = opt.symbol
+    opt.tg_settings['max_len'] = opt.batch_max_length
+    opt.tg_settings['height'] = opt.imgH
+    opt = AttrDict(dict(opt))
     os.makedirs(f'./saved_models/{opt.experiment_name}', exist_ok=True)
     return opt
 
@@ -299,7 +305,7 @@ def run(rank, world_rank, world_size, single:bool, opt):
                     optimizer.step()
                 loss_avg.add(cost)
     
-                if i % 4 == 0 or i == (num_batches - 1):
+                if i % opt.status_every_batch == 0 or i == (num_batches - 1):
                     tm_now = time.time()
                     elapsed = tm_now - tm_it_st
                     elapsed_ep_st = tm_now - t1 
@@ -386,32 +392,26 @@ def run(rank, world_rank, world_size, single:bool, opt):
 
     cleanup()
     
+    
+def run_trdg_dbg_server(tg_settings: dict):
+    print("Creating trdg dbg server...")
+    launch_trdg_server(tg_settings)
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, help="Local rank. Necessary for using the torch.distributed.launch utility.")
     parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--single", type=bool, default=False)
     args = parser.parse_args()    
-    #opt = get_config("config_files/en_filtered_config.yaml")
-    #opt = get_config("config_files/en_filtered_config_ft.yaml")
-    #opt = get_config("config_files/orig_config_ft.yaml")
-    #opt = get_config("config_files/orig_config_ft2.yaml")
-    #opt = get_config("config_files/vgg_lstm_ctc.yaml")
-    #opt = get_config("config_files/resnet_none_attn.yaml")
-    #opt = get_config("config_files/resnet_lstm_attn.yaml")
     
     opt = get_config(args.config)
     
-    if args.single:
-        n_gpus = torch.cuda.device_count()
-        assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
-        world_size = n_gpus
-        mp.spawn(run,
-                args=(0, world_size, args.single, opt),
-                nprocs=world_size,
-                join=True)
-    else:
-        LOCAL_RANK = int(os.environ['LOCAL_RANK'])
-        WORLD_SIZE = int(os.environ['WORLD_SIZE'])
-        WORLD_RANK = int(os.environ['RANK'])
-        run(rank=LOCAL_RANK, world_rank=WORLD_RANK, world_size=WORLD_SIZE, single=False, opt=opt)
+    LOCAL_RANK = int(os.environ['LOCAL_RANK'])
+    WORLD_SIZE = int(os.environ['WORLD_SIZE'])
+    WORLD_RANK = int(os.environ['RANK'])
+    
+    if WORLD_RANK == 0 and opt.tg_dbg_server:
+        tg_set = dict(opt.tg_settings)
+        t = Thread(target=run_trdg_dbg_server, args=(tg_set,))
+        t.start()
+    
+    run(rank=LOCAL_RANK, world_rank=WORLD_RANK, world_size=WORLD_SIZE, single=False, opt=opt)

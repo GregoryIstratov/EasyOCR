@@ -9,7 +9,7 @@ import random as rnd
 from typing import Generic, TypeVar
 
 from natsort import natsorted
-from PIL import Image
+from PIL import Image, ImageFilter
 import numpy as np
 from torch.utils.data import Dataset, IterableDataset, ConcatDataset, Subset
 from torch._utils import _accumulate
@@ -129,13 +129,10 @@ class GenDatasetLocal(GenDatasetBase):
 
     def __init__(self, opt):
         super().__init__()
-        self.opt = opt
+        self.tg_settings = opt.tg_settings
 
     def __iter__(self):
-        gen = TextGen(max_len=self.opt.batch_max_length, blur=self.opt.tg_blur, random_blur=self.opt.tg_random_blur, 
-                        length=self.opt.tg_words_len, 
-                        height=self.opt.imgH, rgb=self.opt.rgb, sensitive=self.opt.sensitive, 
-                        aug_opts=dict(self.opt.tg_augs))
+        gen = TextGen(opt=dict(self.tg_settings))
         
         return gen
     
@@ -404,6 +401,12 @@ class AlignCollate(object):
             resized_images = []
             for image in images:
                 w, h = image.size
+                
+                # if True:
+                #     image = add_image_noise(image)
+                #     # blur_fact = 2
+                #     # gaussian_filter = ImageFilter.GaussianBlur(radius=blur_fact)
+                #     # image = image.filter(gaussian_filter)         
 
                 #### augmentation here - change contrast
                 if self.contrast_adjust > 0:

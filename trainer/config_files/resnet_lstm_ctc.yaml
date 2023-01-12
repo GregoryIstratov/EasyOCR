@@ -3,55 +3,62 @@ symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
 experiment_name: 'resnet_lstm_ctc'
 train_data: False
-valid_data: False
+valid_data: 'valid_data/ocr_doc_dataset_test'
+# valid_data: False
 valid_items_count: 2000
+status_every_batch: 16
 #Text generator options tg_*
-tg_blur: 4
-tg_random_blur: True
-tg_words_len: 3
 #tg_distributed: "172.25.0.86:50051"
 tg_distributed: False
-tg_augs:
-  allow_list:
-    - text_blur
-    - text_noise
-    - blur
-    - motion_blur
-    - sharpen
-    - downsample
-    - jpeg_artifact
-    - sin_cos
-  # number of simultanious augmentations
-  k: 2
-  # Image, Noise, Plain probabilities
-  inp_weights:
-    - 0.5
-    - 0.35
-    - 0.15
-  text_blur: 4
-  text_blur_rnd: True
-  blur: 4
-  blur_rnd: True
-  downsample_factor: 4
-  jpeg_artifact_q: 13
-  motion_blur_sz_min: 10
-  motion_blur_sz_max: 15
-  invert_chance: 0.3
-  overexposure_chance: 0.3
-  overexposure_k: 1
+tg_dbg_server: True
+tg_settings:
+  generators:
+    - rnd
+    - en
+    - ru
+  length: 3
+  augs:
+    allow_list:
+      - blur
+      # - motion_blur
+      # - downsample
+      # - jpeg_artifact
+      - noise
+      - sin_cos
+    # number of simultanious augmentations
+    k: 2
+    # Image, Noise, Plain probabilities
+    inp_weights:
+      - 0.33
+      - 0.33
+      - 0.33
+    text_blur: 4
+    text_blur_rnd: True
+    blur: 4
+    blur_rnd: True
+    downsample_factor: 5
+    jpeg_artifact_q: 10
+    motion_blur_sz_min: 10
+    motion_blur_sz_max: 15
+    noise_mean: 1
+    noise_stddev: 0.4
+    invert_chance: 0.5
+    overexposure_chance: 0.0
+    overexposure_k: 1
 manualSeed: 1111
 workers: 12
-batch_size: 32 #32
-epochs: 50
-epoch_size: 5000
-val_show_number: 15
-saved_model: '' #'saved_models/cyrillic_g2.pth'
+batch_size: 16 #32
+epochs: 40
+epoch_size: 16000
+val_show_number: 35
+#saved_model: '' #'saved_models/cyrillic_g2.pth'
+saved_model: 'saved_models/resnet_lstm_ctc/912.pth' #'saved_models/cyrillic_g2.pth'
 FT: False
 amp: True
 optim: 'adamw' # default is Adadelta
-lr: 1
+lr: 0.2
 sched_enabled: True
-sched_MulLR_factor: 0.97
+sched_MulLR_factor: 0.985
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
@@ -64,7 +71,6 @@ rgb: False
 contrast_adjust: False
 sensitive: False
 PAD: True
-contrast_adjust: 0.0
 data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
