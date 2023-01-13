@@ -104,12 +104,12 @@ def run(rank, world_rank, world_size, single:bool, opt):
         train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size // world_size), workers=opt.workers)
             
     else:
-        train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=64)
+        train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=256)
     
     if not opt.valid_data:
         valid_dataset = Dataloader(opt, RangedGenDataset(GenDatasetLocal(opt), opt.valid_items_count), workers=4)
     else:            
-        valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=64)
+        valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=256)
     
     """ model configuration """
     if 'CTC' in opt.Prediction:
@@ -190,6 +190,9 @@ def run(rank, world_rank, world_size, single:bool, opt):
         pretrained_dict = torch.load(opt.saved_model, map_location=map_location)
     #model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     # create model and move it to GPU with id rank
+    
+    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+            
     ddp_model = DDP(model, device_ids=[rank], output_device=rank)
           
     if is_master():

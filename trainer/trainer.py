@@ -25,11 +25,14 @@ def find_config(configfile: str):
     return str(p.absolute())
 
 def get_config(file_path):
-    filename = find_config(file_path)
-    with open(filename, 'r', encoding="utf8") as stream:
+    with open(file_path, 'r', encoding="utf8") as stream:
         opt = yaml.safe_load(stream)
     opt = AttrDict(opt)
     opt.character = opt.number + opt.symbol + opt.lang_char
+    opt.tg_settings['symbols'] = opt.symbol
+    opt.tg_settings['max_len'] = opt.batch_max_length
+    opt.tg_settings['height'] = opt.imgH
+    opt = AttrDict(dict(opt))
     os.makedirs(f'./saved_models/{opt.experiment_name}', exist_ok=True)
     return opt
 
@@ -44,6 +47,6 @@ args = parser.parse_args()
 #opt = get_config("config_files/resnet_none_attn.yaml")
 #opt = get_config("config_files/resnet_lstm_attn.yaml")
 
-opt = get_config(args.config)
+opt = get_config(find_config(args.config))
     
 train(opt)
