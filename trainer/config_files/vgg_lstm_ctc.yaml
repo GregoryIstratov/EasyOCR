@@ -2,34 +2,103 @@ number: '0123456789'
 symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
 experiment_name: 'vgg_lstm_ctc'
-train_data: 'all_data'
+train_data: False
 valid_data: False
-#valid_data: 'all_data/ocr_doc_dataset_all'
+#valid_data: 'valid_data/ocr_doc_dataset_no_sts'
+valid_items_count: 500
+status_every_batch: 8
 #Text generator options tg_*
-tg_blur: 4
-tg_random_blur: True
-tg_words_len: 3
-tg_distributed: "172.25.0.86:50051"
-#tg_distributed: False
+#tg_distributed: "172.25.0.86:50051"
+tg_distributed: False
+tg_dbg_server: False
+tg_settings:
+  filter_chars: "!\"#$%&'*+/:;<=?@[\\]^_`{|}~€₽"
+  generators:
+    - rnd
+    - en
+    - ru
+  length: 2
+  augs:
+    instances:
+      blur1:
+        type: "blur"
+        opt:
+          radius_min: 1
+          radius_max: 4
+      motion_blur1:
+        type: "motion_blur"
+        opt:
+          size_min: 10
+          size_max: 14
+      downsample1:
+        type: "downsample"
+        opt:
+          factor_min: 4
+          factor_max: 4
+      jpeg_artifact1:
+        type: "jpeg_artifact"
+        opt:
+          quality_min: 10
+          quality_max: 15
+      noise1:
+        type: "noise"
+        opt:
+          mean: 1
+          stddev: 0.3
+      
+    pipelines:
+      main:
+        type: "random_uniform"
+        k: 2
+        augs:
+          - blur1
+          - motion_blur1
+          - downsample1
+          - jpeg_artifact1
+          - noise1
+          - jp_sharp
+      jp_sharp:
+        type: "sequential"
+        augs:
+          - jpeg_artifact1
+          - sharpen1
+    
+    allow_list:
+      - blur
+      - motion_blur
+      - downsample
+      - jpeg_artifact
+      - noise
+      #- sin_cos
+    # number of simultanious augmentations
+    k: 1
+    # Image, Noise, Plain probabilities
+    inp_weights:
+      - 0.33
+      - 0.33
+      - 0.33
+    invert_chance: 0.5
+    overexposure_chance: 0.0
+    overexposure_k: 1
 manualSeed: 1111
-workers: 16
-batch_size: 32 #32
-num_iter: 500000
-valInterval: 500
-saved_model: '' #'saved_models/cyrillic_g2.pth'
-FT: False
+workers: 1
+batch_size: 64 #32
+epochs: 50
+epoch_size: 16000
+val_show_number: 25
+saved_model: '' #'saved_models/en_filtered/iter_300000.pth'
+FT: True
+amp: True
 optim: 'adamw' # default is Adadelta
-lr: 1
+lr: 0.6
+sched_enabled: True
+sched_MulLR_factor: 0.99
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-#select_data: 'text_dataset_ru_gray_10k3' # this is dataset folder in train_data
-select_data: False # this is dataset folder in train_data
-batch_ratio: '1' 
-total_data_usage_ratio: 1.0
-batch_max_length: 48
+batch_max_length: 56
 imgH: 64
 imgW: 1200
 rgb: False

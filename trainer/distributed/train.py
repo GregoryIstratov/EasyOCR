@@ -101,15 +101,15 @@ def run(rank, world_rank, world_size, single:bool, opt):
         else:
             gen_ds = GenDatasetLocal(opt)
             
-        train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size // world_size), workers=opt.workers)
+        train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size // world_size), workers=opt.workers, prefetch_factor=opt.prefetch_train)
             
     else:
-        train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=256)
+        train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=opt.prefetch_train)
     
     if not opt.valid_data:
-        valid_dataset = Dataloader(opt, RangedGenDataset(GenDatasetLocal(opt), opt.valid_items_count), workers=4)
+        valid_dataset = Dataloader(opt, RangedGenDataset(GenDatasetLocal(opt), opt.valid_items_count), workers=4, prefetch_factor=opt.prefetch_valid)
     else:            
-        valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=256)
+        valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=opt.prefetch_valid)
     
     """ model configuration """
     if 'CTC' in opt.Prediction:

@@ -8,16 +8,18 @@ import torch.nn as nn
 import torch.nn.init as init
 import torch.optim as optim
 import torch.utils.data
+from torch.utils.data import ConcatDataset, Subset
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 
 from utils import CTCLabelConverter, AttnLabelConverter, Averager
-from dataset import GenDatasetLocal, GenDatasetRemote, RangedGenDataset, Dataloader, OCRDataset, hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
+from dataset import DocGenDataset, GenDatasetLocal, GenDatasetRemote, RangedGenDataset, Dataloader, OCRDataset, hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from model import Model
 from test import validation, validation2
 from modules.prediction import Attention
 import logging
 import logger as lg
+import torch.onnx
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -33,7 +35,7 @@ def count_parameters(model, logger: logging.Logger):
     logger.info(f"Total Trainable Params: {total_params}")
     return total_params
 
-def train(opt):
+def train(opt: dict):
     logger: logging.Logger = lg.create_logger("stdout", lg.LogLevel.INFO, filename=f"./saved_models/{opt.experiment_name}/log_output.log")
     
     """ dataset preparation """
@@ -46,21 +48,59 @@ def train(opt):
     # else:
     #     train_dataset = Batch_Balanced_Dataset(opt)
     
-    if not opt.train_data:
-        if opt.tg_distributed:
-            gen_ds = GenDatasetRemote(opt)
+    if "train_dataset_list" in opt.keys():
+        ds_list = []
+        for ds_path in opt.train_dataset_list:
+            ds = OCRDataset(root=ds_path, opt=opt, enable_augs=True)
+            ds_list.append(ds)
+            
+        docs = ConcatDataset(ds_list)
+        
+        logger.info(f"Whole dataset len = {len(docs)}")
+        
+        generator1 = torch.Generator().manual_seed(1488)
+        
+        if 1:
+            train_doc, valid_doc = torch.utils.data.random_split(docs, [0.95, 0.05], generator=generator1)
         else:
-            gen_ds = GenDatasetLocal(opt)
+            tr_idxs = random.sample(range(len(docs)), k=7000)
+            train_doc = Subset(docs, tr_idxs)
+            valid_doc = Subset(train_doc, range(1000))
             
-        train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size), workers=opt.workers)
+        logger.info(f"Train dataset len = {len(train_doc)}")
+        logger.info(f"Valid dataset len = {len(valid_doc)}")
+        
+        if opt.mixed_doc_gen:
+            gen = RangedGenDataset(GenDatasetLocal(opt), opt.epoch_size)
+            ds = DocGenDataset(train_doc, gen, opt.mixed_doc_ratio)
+            train_dataset = Dataloader(opt, ds, workers=opt.workers, prefetch_factor=opt.prefetch_train, shuffle=True)
+        else:
+            train_dataset = Dataloader(opt, train_doc, workers=opt.workers, prefetch_factor=opt.prefetch_train, shuffle=True)
             
+        valid_dataset = Dataloader(opt, valid_doc, workers=4, prefetch_factor=opt.prefetch_valid, shuffle=True)
     else:
-        train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=64)
+        if not opt.train_data:
+            if opt.tg_distributed:
+                gen_ds = GenDatasetRemote(opt)
+            else:
+                gen_ds = GenDatasetLocal(opt)
+                
+            train_dataset = Dataloader(opt, RangedGenDataset(gen_ds, opt.epoch_size), workers=opt.workers, prefetch_factor=opt.prefetch_train)
+                
+        else:
+            if opt.mixed_doc_gen:
+                doc = OCRDataset(root=opt.train_data, opt=opt, enable_augs=True)
+                gen = RangedGenDataset(GenDatasetLocal(opt), opt.epoch_size)
+                ds = DocGenDataset(doc, gen, opt.mixed_doc_ratio)
+                train_dataset = Dataloader(opt, ds, workers=opt.workers, prefetch_factor=opt.prefetch_train, shuffle=True)
+            else:
+                train_dataset = Dataloader(opt, OCRDataset(root=opt.train_data, opt=opt), workers=opt.workers, prefetch_factor=opt.prefetch_train, shuffle=True)
+
     
-    if not opt.valid_data:
-        valid_dataset = Dataloader(opt, RangedGenDataset(GenDatasetLocal(opt), opt.valid_items_count), workers=4)
-    else:            
-        valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=64)
+        if not opt.valid_data:
+            valid_dataset = Dataloader(opt, RangedGenDataset(GenDatasetLocal(opt), opt.valid_items_count), workers=opt.workers, prefetch_factor=opt.prefetch_valid)
+        else:            
+            valid_dataset = Dataloader(opt, OCRDataset(root=opt.valid_data, opt=opt), workers=4, prefetch_factor=opt.prefetch_valid, shuffle=True)
     
     """ model configuration """
     if 'CTC' in opt.Prediction:
@@ -73,54 +113,75 @@ def train(opt):
         opt.input_channel = 3
     model = Model(opt)
 
-    if opt.saved_model != '':
-        pretrained_dict = torch.load(opt.saved_model)
-        if opt.new_prediction:
-            if opt.Prediction == 'CTC':
-                model.Prediction = nn.Linear(model.SequenceModeling_output, opt.num_class)
-            elif opt.Prediction == 'Attn':
-                model.Prediction = Attention(model.SequenceModeling_output, opt.hidden_size, opt.num_class)
-            #model.Prediction = nn.Linear(model.SequenceModeling_output, len(pretrained_dict['module.Prediction.weight']))  
-        
-        model = torch.nn.DataParallel(model).to(device) 
-        logger.info(f'loading pretrained model from {opt.saved_model}')
-        if opt.FT:
-            model.load_state_dict(pretrained_dict, strict=False)
+    if 1:
+        if opt.saved_model != '':
+            pretrained_dict = torch.load(opt.saved_model)
+            if opt.new_prediction:
+                model.Prediction = nn.Linear(model.SequenceModeling_output, len(pretrained_dict['module.Prediction.weight']))  
+            
+            model = torch.nn.DataParallel(model).to(device) 
+            logger.info(f'loading pretrained model from {opt.saved_model}')
+            if opt.FT:
+                model.load_state_dict(pretrained_dict, strict=False)
+            else:
+                model.load_state_dict(pretrained_dict)
+            if opt.new_prediction:
+                model.module.Prediction = nn.Linear(model.module.SequenceModeling_output, opt.num_class)  
+                for name, param in model.module.Prediction.named_parameters():
+                    if 'bias' in name:
+                        init.constant_(param, 0.0)
+                    elif 'weight' in name:
+                        init.kaiming_normal_(param)
+                model = model.to(device) 
         else:
-            model.load_state_dict(pretrained_dict)
+            # weight initialization
+            for name, param in model.named_parameters():
+                if 'localization_fc2' in name:
+                    logger.info(f'Skip {name} as it is already initialized')
+                    continue
+                try:
+                    if 'bias' in name:
+                        init.constant_(param, 0.0)
+                    elif 'weight' in name:
+                        init.kaiming_normal_(param)
+                except Exception as e:  # for batchnorm.
+                    if 'weight' in name:
+                        param.data.fill_(1)
+                    continue
+            model = torch.nn.DataParallel(model).to(device)
+        
+        model.train() 
+        logger.info("Model:")
+        logger.info(model)
+        count_parameters(model, logger)
+    else:    
+        #loading for resnet2 model
+        model = Model(opt)
+        model = torch.nn.DataParallel(model).to(device)
+        
         if opt.new_prediction:
-            if opt.Prediction == 'CTC':
-                model.Prediction = nn.Linear(model.module.SequenceModeling_output, opt.num_class)
-            elif opt.Prediction == 'Attn':
-                model.Prediction = Attention(model.module.SequenceModeling_output, opt.hidden_size, opt.num_class)            
-            #model.module.Prediction = nn.Linear(model.module.SequenceModeling_output, opt.num_class)  
+            model.module.Prediction = nn.Linear(model.module.SequenceModeling_output, opt.num_class)
             for name, param in model.module.Prediction.named_parameters():
                 if 'bias' in name:
                     init.constant_(param, 0.0)
                 elif 'weight' in name:
                     init.kaiming_normal_(param)
-            model = model.to(device) 
-    else:
-        # weight initialization
-        for name, param in model.named_parameters():
-            if 'localization_fc2' in name:
-                logger.info(f'Skip {name} as it is already initialized')
-                continue
-            try:
+                
+        if opt.new_SeqMod:                
+            for name, param in model.module.SequenceModeling.named_parameters():
                 if 'bias' in name:
                     init.constant_(param, 0.0)
                 elif 'weight' in name:
                     init.kaiming_normal_(param)
-            except Exception as e:  # for batchnorm.
-                if 'weight' in name:
-                    param.data.fill_(1)
-                continue
-        model = torch.nn.DataParallel(model).to(device)
+        
+        model = model.to(device)         
     
-    model.train() 
-    logger.info("Model:")
-    logger.info(model)
-    count_parameters(model, logger)
+    # model.eval()
+    # test = torch.rand(1, 1, 64, 1200).cpu()
+    # torch.onnx.export(model, test, "./saved_models/doc.onnx")
+    # #traced = torch.jit.trace(model, test)
+    # #traced.save("./saved_models/traced_model.pt")
+    # exit(0)
     
     """ setup loss """
     if 'CTC' in opt.Prediction:
@@ -190,10 +251,10 @@ def train(opt):
     ep = 0
     scaler = GradScaler()
     total_trained: int = 0
-    valid_before = opt.saved_model != ''
+    valid_before = opt.saved_model != '' and opt.new_prediction == False
     
     for ep in range(opt.epochs):
-        if opt.sched_enabled and ep != 0:
+        if opt.sched_enabled and ep != 0 and (ep % opt.sched_epoch_interval == 0) and ep <= opt.sched_disable_after_ep:
             scheduler.step()
             logger.info(f"[{ep}/{opt.epochs}] Scheduler step, new lr: {optimizer.param_groups[0]['lr']:0.7f}")
                 
@@ -255,7 +316,7 @@ def train(opt):
                     optimizer.step()
                 loss_avg.add(cost)
     
-                if i % 8 == 0 or i == (num_batches - 1):
+                if i % opt.status_every_batch == 0 or i == (num_batches - 1):
                     tm_now = time.time()
                     elapsed = tm_now - tm_it_st
                     elapsed_ep_st = tm_now - t1 

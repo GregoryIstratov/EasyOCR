@@ -1,36 +1,33 @@
 number: '0123456789'
-symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €₽"
-lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюяЂђЃѓЄєІіЇїЈјЉљЊњЋћЌќЎўЏџҐґҒғҚқҮүҲҳҶҷӀӏӢӣӨөӮӯ'
-experiment_name: 'ru_orig_ft'
-#train_data: False
-#valid_data: False
-train_data: 'all_data/ocr_doc_dataset_all'
-valid_data: 'all_data/ocr_doc_dataset_all'
+symbol: "<"
+lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+experiment_name: 'vgg_none_attn_mrz'
+train_data: False
+valid_data: False
 valid_items_count: 1000
-status_every_batch: 1
+status_every_batch: 25
 #Text generator options tg_*
 #tg_distributed: "172.25.0.86:50051"
 tg_distributed: False
 tg_dbg_server: False
 tg_settings:
-  filter_chars: "!\"#$%&'*+/:;<=?@[\\]^_`{|}~€₽"
+  filter_chars: "\n"
   generators:
-    - rnd
-    - en
-    - ru
+    - mrz
+  multiline: True
   length: 3
   augs:
     instances:
       i_blur1:
         type: "blur"
         opt:
-          radius_min: 2
-          radius_max: 3
+          radius_min: 1.5
+          radius_max: 2
       i_motion_blur1:
         type: "motion_blur"
         opt:
-          size_min: 12
-          size_max: 13
+          size_min: 9
+          size_max: 11
       i_downsample1:
         type: "downsample"
         opt:
@@ -68,7 +65,7 @@ tg_settings:
         type: "sharpen"
         opt:
           sharpness_min: 2
-          sharpness_max: 60
+          sharpness_max: 40
       i_sin_cos1:
         type: "sin_cos"
         opt:
@@ -81,21 +78,12 @@ tg_settings:
         type: "random_uniform"
         k: 1
         augs:
-          - i_downsample1
-          - blur_jpeg
-          - all_blurs
-          - i_noise1
-          - i_jpeg_artifact_strong
-          - jp_sharp
-      text:
-        type: "random_weighted"
-        k: 1
-        weights:
-          - 0.5
-          - 0.5
-        augs:
+          # - i_downsample1
+          #- blur_jpeg
+          #- all_blurs
+          #- i_noise1
+          #- jp_sharp
           - i_none1
-          - i_sin_cos1
       blur_jpeg:
         type: "sequential"
         augs:
@@ -117,10 +105,10 @@ tg_settings:
     k: 1
     # Image, Noise, Plain probabilities
     inp_weights:
+      - 0.0
       - 0.33
       - 0.33
-      - 0.33
-    invert_chance: 0.3
+    invert_chance: 0.0
     overexposure_chance: 0.0
     overexposure_k: 1
     blend_factor_min: 0.4
@@ -128,26 +116,28 @@ tg_settings:
     font_color: 0
 manualSeed: 1111
 workers: 12
-batch_size: 256 #32
-epochs: 35
-epoch_size: 128000
+prefetch_train: 8
+prefetch_valid: 24
+batch_size: 16 #32
+epochs: 40
+epoch_size: 16000
 val_show_number: 64
-#saved_model: 'saved_models/cyrillic_g2.pth' #'saved_models/en_filtered/iter_300000.pth'
-saved_model: 'saved_models/ru_orig_ft/1.pth' #'saved_models/en_filtered/iter_300000.pth'
-FT: True
+saved_model: '' #'saved_models/en_filtered/iter_300000.pth'
+#saved_model: 'saved_models/vgg_none_attn_mrz/vgg_lstm_attn_ml_7.pth' #'saved_models/en_filtered/iter_300000.pth'
+FT: False
 amp: True
 optim: 'adamw' # default is Adadelta
-lr: 0.09
+lr: 1
 sched_enabled: True
-sched_MulLR_factor: 0.98
+sched_MulLR_factor: 1
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
 grad_clip: 5
 #Data processing
-batch_max_length: 56
+batch_max_length: 100
 imgH: 64
-imgW: 1200
+imgW: 1408
 rgb: False
 contrast_adjust: False
 sensitive: False
@@ -161,8 +151,9 @@ SequenceModeling: 'BiLSTM'
 Prediction: 'CTC'
 num_fiducial: 20
 input_channel: 1
-output_channel: 256
-hidden_size: 256
+avg_pool_height: 2
+output_channel: 512
+hidden_size: 512
 decode: 'greedy'
 new_prediction: False
 freeze_FeatureFxtraction: False

@@ -1,23 +1,31 @@
 number: '0123456789'
-symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €₽"
-lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюяЂђЃѓЄєІіЇїЈјЉљЊњЋћЌќЎўЏџҐґҒғҚқҮүҲҳҶҷӀӏӢӣӨөӮӯ'
-experiment_name: 'ru_orig_ft'
-#train_data: False
-#valid_data: False
-train_data: 'all_data/ocr_doc_dataset_all'
+symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
+lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
+experiment_name: 'resnet2_lstm_ctc_doc_ft_test'
+mixed_doc_gen: False
+mixed_doc_ratio: 0.6
+train_dataset_list:
+  - all_data/ocr_doc_dataset_all
+  - /home/greg/idx_test_dump/dataset/dataset_xlsx_part1
+  - /home/greg/idx_test_dump/dataset/dataset_xlsx_part2
+  - all_data/document_dataset_150323/dl
+  - all_data/document_dataset_150323/sts/front
+  - all_data/document_dataset_150323/sts/back
 valid_data: 'all_data/ocr_doc_dataset_all'
-valid_items_count: 1000
-status_every_batch: 1
+valid_items_count: 5000
+status_every_batch: 8
 #Text generator options tg_*
 #tg_distributed: "172.25.0.86:50051"
 tg_distributed: False
 tg_dbg_server: False
 tg_settings:
-  filter_chars: "!\"#$%&'*+/:;<=?@[\\]^_`{|}~€₽"
+  multiline: False
+  filter_chars: "!#$%&'*+/:;=?@[\\]^_`{|}~€₽"
   generators:
     - rnd
     - en
     - ru
+    - mrz
   length: 3
   augs:
     instances:
@@ -26,21 +34,26 @@ tg_settings:
         opt:
           radius_min: 2
           radius_max: 3
+      i_blur_light1:
+        type: "blur"
+        opt:
+          radius_min: 1.5
+          radius_max: 2        
       i_motion_blur1:
         type: "motion_blur"
         opt:
-          size_min: 12
-          size_max: 13
+          size_min: 10
+          size_max: 11
       i_downsample1:
         type: "downsample"
         opt:
           factor_min: 2
-          factor_max: 4
+          factor_max: 3
       i_jpeg_artifact1:
         type: "jpeg_artifact"
         opt:
-          quality_min: 8
-          quality_max: 12
+          quality_min: 11
+          quality_max: 15
       i_jpeg_artifact_strong:
         type: "jpeg_artifact"
         opt:
@@ -87,6 +100,16 @@ tg_settings:
           - i_noise1
           - i_jpeg_artifact_strong
           - jp_sharp
+          - i_none1
+      doc:
+        type: "random_uniform"
+        k: 1
+        augs:
+          - i_noise1
+          - jp_sharp
+          - i_blur_light1
+          - i_none1
+          - i_none1
       text:
         type: "random_weighted"
         k: 1
@@ -121,25 +144,29 @@ tg_settings:
       - 0.33
       - 0.33
     invert_chance: 0.3
-    overexposure_chance: 0.0
+    overexposure_chance: 0.3
     overexposure_k: 1
     blend_factor_min: 0.4
     blend_factor_max: 0.7
     font_color: 0
 manualSeed: 1111
+prefetch_train: 8
+prefetch_valid: 32
 workers: 12
-batch_size: 256 #32
-epochs: 35
-epoch_size: 128000
+batch_size: 32 #32
+epochs: 100
+epoch_size: 32000
 val_show_number: 64
 #saved_model: 'saved_models/cyrillic_g2.pth' #'saved_models/en_filtered/iter_300000.pth'
-saved_model: 'saved_models/ru_orig_ft/1.pth' #'saved_models/en_filtered/iter_300000.pth'
+#saved_model: 'saved_models/resnet_lstm_ctc/ep_25.pth' #'saved_models/en_filtered/iter_300000.pth'
+saved_model: 'saved_models/angle_detector54.pt' #'saved_models/en_filtered/iter_300000.pth'
 FT: True
 amp: True
 optim: 'adamw' # default is Adadelta
-lr: 0.09
+lr: 1
 sched_enabled: True
-sched_MulLR_factor: 0.98
+sched_epoch_interval: 3
+sched_MulLR_factor: 0.8
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
@@ -148,7 +175,7 @@ grad_clip: 5
 batch_max_length: 56
 imgH: 64
 imgW: 1200
-rgb: False
+rgb: True
 contrast_adjust: False
 sensitive: False
 PAD: True
@@ -156,7 +183,7 @@ contrast_adjust: 0.0
 data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
-FeatureExtraction: 'VGG'
+FeatureExtraction: 'ResNet'
 SequenceModeling: 'BiLSTM'
 Prediction: 'CTC'
 num_fiducial: 20

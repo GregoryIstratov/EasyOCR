@@ -16,7 +16,10 @@ from torch._utils import _accumulate
 import torchvision.transforms as transforms
 from TextRecognitionDataGenerator.generate import Generator as TextGen
 from TextRecognitionDataGenerator.server.client import Client as TextGenDistClient
+from TextRecognitionDataGenerator.trdg.aug import build_augmentation_pipeline
 import multiprocessing as mp
+
+from PIL import Image
 
 def contrast_grey(img):
     high = np.percentile(img, 90)
@@ -224,7 +227,7 @@ class Dataloader(object):
     #         return self.get_batch()
 
     #     return image, text
-
+        
 
 def hierarchical_dataset(root, opt, select_data='/'):
     """ select_data='/' contains all sub-directory of root directory """
@@ -299,13 +302,18 @@ class GenDatasetRanged(Dataset):
 
 class OCRDataset(Dataset):
 
-    def __init__(self, root, opt):
+    def __init__(self, root, opt, enable_augs=False):
 
         self.root = root
         self.opt = opt
+        self.enable_augs = enable_augs
+        
+        if self.enable_augs:
+            self.aug_pipelines = build_augmentation_pipeline(opt.tg_settings['augs'])
+                
         print(root)
         self.df = pd.read_csv(os.path.join(root,'labels.csv'), sep='^([^,]+),', engine='python', usecols=['filename', 'words'], keep_default_na=False)
-        self.nSamples = len(self.df)
+        self.nSamples = len(self.df)     
 
         if self.opt.data_filtering_off:
             self.filtered_index_list = [index for index in range(self.nSamples)]
@@ -323,6 +331,15 @@ class OCRDataset(Dataset):
                     continue
                 self.filtered_index_list.append(index)
             self.nSamples = len(self.filtered_index_list)
+            
+        # self.filtered_index_list = []
+        # for index in range(self.nSamples):
+        #     label = self.df.at[index,'words']
+
+        #     if re.search('<+', label.lower()):
+        #         continue
+        #     self.filtered_index_list.append(index)
+        # self.nSamples = len(self.filtered_index_list)               
 
     def __len__(self):
         return self.nSamples
@@ -344,8 +361,47 @@ class OCRDataset(Dataset):
         # We only train and evaluate on alphanumerics (or pre-defined character set in train.py)
         out_of_char = f'[^{self.opt.character}]'
         label = re.sub(out_of_char, '', label)
+        
+        #label = re.sub('\.', ' ', label)
+        label = re.sub('\s+', ' ', label)
+        #label = re.sub('["\',]+', '', label)
+        label = label.strip()
+        
+        w, h = img.size
+        ratio = w / float(h)
+        if math.ceil(self.opt.imgH * ratio) > self.opt.imgW:
+            resized_w = self.opt.imgW
+        else:
+            resized_w = math.ceil(self.opt.imgH * ratio)
 
+        img = img.resize((resized_w, self.opt.imgH), Image.LINEAR)        
+        
+        if self.enable_augs:
+            #img.save("test_orig.jpg", "JPEG")
+            img = self.aug_pipelines["doc"].apply(img)
+            #img.save("test.jpg", "JPEG")
+            
+        
         return (img, label)
+    
+class DocGenDataset(Dataset):
+    doc: Dataset
+    gen: Dataset
+    doc_ratio: float
+    
+    def __init__(self, doc: Dataset, gen: Dataset, doc_ratio: float):
+        self.doc = doc
+        self.gen = gen
+        self.doc_ratio = doc_ratio
+        
+    def __len__(self):
+        return len(self.doc)
+    
+    def __getitem__(self, index):
+        if rnd.random() < self.doc_ratio:
+            return self.doc.__getitem__(index)
+        else:
+            return self.gen.__getitem__(index)
 
 class ResizeNormalize(object):
 

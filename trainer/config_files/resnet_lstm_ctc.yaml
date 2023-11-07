@@ -2,64 +2,149 @@ number: '0123456789'
 symbol: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ №"
 lang_char: 'ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
 experiment_name: 'resnet_lstm_ctc'
+mixed_doc_gen: False
 train_data: False
-valid_data: 'valid_data/ocr_doc_dataset_test'
-# valid_data: False
-valid_items_count: 2000
-status_every_batch: 16
+#valid_data: False
+valid_data: 'all_data/ocr_doc_dataset_all'
+valid_items_count: 5000
+status_every_batch: 8
 #Text generator options tg_*
 #tg_distributed: "172.25.0.86:50051"
 tg_distributed: False
-tg_dbg_server: True
+tg_dbg_server: False
 tg_settings:
-  filter_chars: ''
+  multiline: False
+  filter_chars: "!#$%&'*+/:;=?@[\\]^_`{|}~€₽"
   generators:
     - rnd
     - en
     - ru
+    - mrz
   length: 3
   augs:
-    allow_list:
-      - blur
-      # - motion_blur
-      # - downsample
-      # - jpeg_artifact
-      - noise
-      - sin_cos
+    instances:
+      i_blur1:
+        type: "blur"
+        opt:
+          radius_min: 2
+          radius_max: 3
+      i_motion_blur1:
+        type: "motion_blur"
+        opt:
+          size_min: 12
+          size_max: 13
+      i_downsample1:
+        type: "downsample"
+        opt:
+          factor_min: 2
+          factor_max: 4
+      i_jpeg_artifact1:
+        type: "jpeg_artifact"
+        opt:
+          quality_min: 8
+          quality_max: 12
+      i_jpeg_artifact_strong:
+        type: "jpeg_artifact"
+        opt:
+          quality_min: 5
+          quality_max: 7
+      i_noise1:
+        type: "noise"
+        opt:
+          mean: 1
+          stddev_min: 0.1
+          stddev_max: 0.3
+          downsample_factor_min: 1
+          downsample_factor_max: 4
+          interpolation: "nearest"        
+      i_noise_light1:
+        type: "noise"
+        opt:
+          mean: 1
+          stddev_min: 0.1
+          stddev_max: 0.1
+          downsample_factor_min: 1
+          downsample_factor_max: 1
+          interpolation: "nearest"
+      i_sharpen1:
+        type: "sharpen"
+        opt:
+          sharpness_min: 2
+          sharpness_max: 60
+      i_sin_cos1:
+        type: "sin_cos"
+        opt:
+          max_offset: 0.35
+      i_none1:
+        type: "none"
+      
+    pipelines:
+      main:
+        type: "random_uniform"
+        k: 1
+        augs:
+          - i_downsample1
+          - blur_jpeg
+          - all_blurs
+          - i_noise1
+          - i_jpeg_artifact_strong
+          - jp_sharp
+      text:
+        type: "random_weighted"
+        k: 1
+        weights:
+          - 0.5
+          - 0.5
+        augs:
+          - i_none1
+          - i_sin_cos1
+      blur_jpeg:
+        type: "sequential"
+        augs:
+          - i_blur1
+          - i_jpeg_artifact1
+      all_blurs:
+        type: "random_uniform"
+        k: 1
+        augs:
+          - i_blur1
+          - i_motion_blur1
+      jp_sharp:
+        type: "sequential"
+        augs:
+          - i_jpeg_artifact1
+          - i_sharpen1
+
     # number of simultanious augmentations
-    k: 2
+    k: 1
     # Image, Noise, Plain probabilities
     inp_weights:
       - 0.33
       - 0.33
       - 0.33
-    text_blur: 4
-    text_blur_rnd: True
-    blur: 4
-    blur_rnd: True
-    downsample_factor: 5
-    jpeg_artifact_q: 10
-    motion_blur_sz_min: 10
-    motion_blur_sz_max: 15
-    noise_mean: 1
-    noise_stddev: 0.4
-    invert_chance: 0.5
-    overexposure_chance: 0.0
+    invert_chance: 0.3
+    overexposure_chance: 0.3
     overexposure_k: 1
+    blend_factor_min: 0.4
+    blend_factor_max: 0.7
+    font_color: 0
 manualSeed: 1111
+prefetch_train: 8
+prefetch_valid: 32
 workers: 12
-batch_size: 16 #32
-epochs: 40
-epoch_size: 16000
-val_show_number: 35
-#saved_model: '' #'saved_models/cyrillic_g2.pth'
-saved_model: 'saved_models/resnet_lstm_ctc/912.pth' #'saved_models/cyrillic_g2.pth'
+batch_size: 32 #32
+epochs: 30
+epoch_size: 32000
+val_show_number: 64
+saved_model: ''
 FT: False
 amp: True
 optim: 'adamw' # default is Adadelta
-lr: 0.2
+lr: 1
 sched_enabled: True
-sched_MulLR_factor: 0.985
+sched_epoch_interval: 5
+sched_disable_after_ep: 30
+sched_MulLR_factor: 0.9
 beta1: 0.9
 rho: 0.9
 eps: 0.00000001
@@ -72,6 +157,7 @@ rgb: False
 contrast_adjust: False
 sensitive: False
 PAD: True
+contrast_adjust: 0.0
 data_filtering_off: True
 # Model Architecture
 Transformation: 'None'
